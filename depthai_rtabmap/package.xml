@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>depthai_rtabmap</name>
+  <version>1.0.0</version>
+  <description>
+    OAK-D combined YOLO spatial detection + RTAB-Map compatible publisher.
+    Provides a single device driver that outputs full-color images, aligned depth,
+    rectified right mono, IMU (with axis correction), and YOLOv4 spatial detections.
+  </description>
+  <maintainer email="user@example.com">user</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>depthai_bridge</depend>
+  <depend>depthai_ros_msgs</depend>
+  <depend>camera_info_manager</depend>
+
+  <exec_depend>python3-launch-ros</exec_depend>
+  <exec_depend>rtabmap_odom</exec_depend>
+  <exec_depend>rtabmap_slam</exec_depend>
+  <exec_depend>rtabmap_sync</exec_depend>
+  <exec_depend>rtabmap_viz</exec_depend>
+  <exec_depend>imu_filter_madgwick</exec_depend>
+  <exec_depend>rtabmap_examples</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
