@@ -1,0 +1,10 @@
+{
+    "Start RTabMap": "ros2 launch rtabmap_examples oak_temp.launch.py",
+    "Start Nav2": "ros2 launch rtabmap_examples test_nav2.launch.py",
+    "Start Rviz": "ros2 launch rtabmap_examples rviz2_rtabmap.launch.py",
+    "Start Goal Listener": "ros2 run rtabmap_examples nav2_goal_pose_listener.py",
+    "Start Yolo4": "ros2 launch depthai_examples yolov4_publisher.launch.py spatial_camera:=true",
+    "Start Object Detection": "ros2 run depthai_examples camera_detections_ros_node.py",
+    "yolo4 rtabmap": "ros2 launch depthai_rtabmap yolov4_rtabmap.launch.py greyscale_slam:=true",
+    "Reset Detections": "ros2 service call /reset_detections std_srvs/srv/Empty"
+}
