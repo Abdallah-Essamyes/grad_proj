@@ -3,6 +3,7 @@ from subClasses.ros_node import (ServoControlROSNode,
                                   Legs, Upperbody)
 from Widgets.servo_widget import servo_control_subWidget
 from Widgets.torque_widget import torque_control_subWidget
+from Widgets.SidebarPanel import SidebarPanel
 from subClasses.position_manager import (servo_widget_width, load_servo_positions,
                                           save_servo_positions, X_GROUP_FOR_ID,
                                           Y_GROUP_FOR_ID, return_servo_subWidgets_positions)
@@ -17,9 +18,9 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Int32,Int16MultiArray
 from pathlib import Path
-from subClasses.myDataclasses import *
+from subClasses.Command_Array import *
 from subClasses.Servo_Pair import Servo_Pair
-
+from subClasses.constants import *
 #the id of the servos in this list should be at its respective
 #index in the low level handling
 #put the required hotkey as well
@@ -36,17 +37,8 @@ command_array(name = Upperbody,
               pub_topic=servo_upperbody_pub_topic,
               pub_type=Int16MultiArray)
 
-# Standard (non-Herkulex) servo IDs and their display pin names
-STD_SERVO_IDS = {101, 102, 103, 104}
-STD_SERVO_DISPLAY: dict[int, str] = {101: "PB13", 102: "PB14", 103: "PB15", 104: "PA8"}
-            #pin number in stm itself       29            30          31           8
-all_commands_dict = command_array.all_commands_dict
-torque_hotkey = "z"
-HS_SERVO_ANGLE_LIMIT = 150 # -150 to 150
-STD_SERVO_ANGLE_LIMIT = 160 # 20 to 160
 
-STD_SERVO_MOTION_PAIRS = [Servo_Pair(servo_left_id=104, servo_right_id=103, min_angle=20, max_angle=160, servos_full_range=180,
-                                     servo_left_start_angle = 90, servo_right_start_angle = 76)]
+all_commands_dict = command_array.all_commands_dict
 
 def ros_spin(node):
     # Spin this node with its own SingleThreadedExecutor to avoid
@@ -78,11 +70,6 @@ class servoGUI(QWidget):
         self._torque_timeout_timer.setSingleShot(True)
         self._torque_timeout_timer.setInterval(1000)
         self._torque_timeout_timer.timeout.connect(self._torque_verify_timeout)
-        # auto-poll timers (status and torque frequency controls)
-        self._status_poll_timer = QTimer(self)
-        self._status_poll_timer.timeout.connect(self.ros_node.request_status)
-        self._torque_poll_timer = QTimer(self)
-        self._torque_poll_timer.timeout.connect(self.ros_node.request_torque_status)
         self.initlayout()
         self.place_servoSubwidgets()
         # Install app-level event filter so +/- work from any widget
@@ -204,201 +191,33 @@ class servoGUI(QWidget):
         self.torque_lock_widget.toggle_requested.connect(self.toggle_torque)
         self.torque_lock_widget.set_on_requested.connect(self.set_torque_on)
         self.torque_lock_widget.set_off_requested.connect(self.set_torque_off)
-        # Error clear button — directly below the torque widget
-        self.error_clear_btn = QPushButton("Clear Errors", parent=self)
-        self.error_clear_btn.setStyleSheet(
-            "QPushButton { background: #c0392b; color: white; font-weight: bold; "
-            "font-size: 13px; border-radius: 4px; padding: 4px; }\n"
-            "QPushButton:pressed { background: #96281b; }")
-        self.error_clear_btn.resize(self.torque_lock_widget.width(), 30)
-        # position set later (below action time box in sidebar)
-        self.error_clear_btn.clicked.connect(self.ros_node.reset_error)
-        self.error_clear_btn.show()
         self.status_ref_table = StatusReferenceTable(parent=self)
         self.status_ref_table.move(self._img_width - 240, 10)
         self.status_ref_table.show()
-        # ── Sidebar polling controls ──────────────────────────────────────────
-        sx = self._img_width + 6   # sidebar left edge
-        # start below the status reference table
-        sy = self.status_ref_table.y() + self.status_ref_table.height() + 10
-        # Write white-checkmark SVG once so qt stylesheet can reference it
-        import os as _os
-        _check_svg = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "documents", "white_check.svg")
-        if not _os.path.exists(_check_svg):
-            with open(_check_svg, "w") as _f:
-                _f.write('<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12">'
-                         '<polyline points="1,7 4,11 11,1" stroke="white" fill="none" stroke-width="2.2"/>'
-                         '</svg>')
-        _check_svg_escaped = _check_svg.replace("\\", "/")
-        _cb_ss = ("QCheckBox {{ color: black; background: transparent; spacing: 5px; }}\n"
-                  "QCheckBox::indicator {{ width: 15px; height: 15px; background: black; "
-                  "border: 1px solid #888; border-radius: 2px; }}\n"
-                  "QCheckBox::indicator:checked {{ background: black; border: 1px solid #aaa; "
-                  "image: url({check}); }}\n").format(check=_check_svg_escaped)
-        _ss = "color: black; background: transparent;"
-        _btn_ss = ("QPushButton { background: #2980b9; color: white; font-weight: bold; "
-                   "font-size: 12px; border-radius: 4px; padding: 3px; }\n"
-                   "QPushButton:pressed { background: #1a5276; }")
-        sidebar_w = self.width() - self._img_width - 8
+            # ── Sidebar panel ─────────────────────────────────────────────────────────
+        sidebar_width = self.width() - self._img_width
+        sidebar_top   = self.status_ref_table.y() + self.status_ref_table.height() + 10
 
-        # --- Status section ---
-        self.status_auto_cb = QCheckBox("Auto", parent=self)
-        self.status_auto_cb.setStyleSheet(_cb_ss)
-        self.status_auto_cb.move(sx, sy)
-        self.status_auto_cb.adjustSize()
-        self.status_freq_label = QLabel("Status Frequency", parent=self)
-        self.status_freq_label.setStyleSheet(_ss + " font-weight: bold;")
-        self.status_freq_label.move(sx + self.status_auto_cb.width() + 2, sy)
-        self.status_freq_label.adjustSize()
+        self.sidebar = SidebarPanel(panel_width=sidebar_width, parent=self)
+        self.sidebar.move(self._img_width, sidebar_top)
+        self.sidebar.show()
 
-        self.status_freq_spin = QDoubleSpinBox(parent=self)
-        self.status_freq_spin.setRange(0.1, 20.0)
-        self.status_freq_spin.setSingleStep(0.5)
-        self.status_freq_spin.setValue(1.0)
-        self.status_freq_spin.setDecimals(1)
-        self.status_freq_spin.resize(65, 24)
-        self.status_freq_spin.move(sx, sy + 22)
-        self.status_hz_label = QLabel("Hz", parent=self)
-        self.status_hz_label.setStyleSheet(_ss)
-        self.status_hz_label.move(sx + 68, sy + 26)
-        self.status_hz_label.adjustSize()
+        # Connect outward signals to their targets
+        self.sidebar.ask_status_requested.connect(self.ros_node.request_status)
+        self.sidebar.ask_torque_requested.connect(self.ros_node.request_torque_status)
+        self.sidebar.reinitialize_requested.connect(self.ros_node.reinitialize_servos)
+        self.sidebar.clear_errors_requested.connect(self.ros_node.reset_error)
+        self.sidebar.status_poll_tick.connect(self.ros_node.request_status)
+        self.sidebar.torque_poll_tick.connect(self.ros_node.request_torque_status)
+        self.sidebar.step_changed.connect(lambda v: setattr(self, 'step', v))
+        self.sidebar.action_time_changed.connect(lambda v: setattr(self, 'action_time', v))
 
-        self.ask_status_btn = QPushButton("Ask for Status", parent=self)
-        self.ask_status_btn.setStyleSheet(_btn_ss)
-        self.ask_status_btn.resize(sidebar_w, 26)
-        self.ask_status_btn.move(sx, sy + 50)
-        self.ask_status_btn.clicked.connect(self.ros_node.request_status)
-        self.ask_status_btn.show()
+        # Keep a reference to the action_time spinbox so the event filter still works
+        self._action_time_spinbox_ref = self.sidebar.action_time_spinBox
+        self.sidebar.action_time_spinBox.installEventFilter(self)
 
-        # --- Torque section ---
-        ty = sy + 88
-        self.torque_auto_cb = QCheckBox("Auto", parent=self)
-        self.torque_auto_cb.setStyleSheet(_cb_ss)
-        self.torque_auto_cb.move(sx, ty)
-        self.torque_auto_cb.adjustSize()
-        self.torque_freq_label = QLabel("Torque Frequency", parent=self)
-        self.torque_freq_label.setStyleSheet(_ss + " font-weight: bold;")
-        self.torque_freq_label.move(sx + self.torque_auto_cb.width() + 2, ty)
-        self.torque_freq_label.adjustSize()
-
-        self.torque_freq_spin = QDoubleSpinBox(parent=self)
-        self.torque_freq_spin.setRange(0.1, 20.0)
-        self.torque_freq_spin.setSingleStep(0.5)
-        self.torque_freq_spin.setValue(1.0)
-        self.torque_freq_spin.setDecimals(1)
-        self.torque_freq_spin.resize(65, 24)
-        self.torque_freq_spin.move(sx, ty + 22)
-        self.torque_hz_label = QLabel("Hz", parent=self)
-        self.torque_hz_label.setStyleSheet(_ss)
-        self.torque_hz_label.move(sx + 68, ty + 26)
-        self.torque_hz_label.adjustSize()
-
-        self.ask_torque_btn = QPushButton("Ask for Torque", parent=self)
-        self.ask_torque_btn.setStyleSheet(_btn_ss)
-        self.ask_torque_btn.resize(sidebar_w, 26)
-        self.ask_torque_btn.move(sx, ty + 50)
-        self.ask_torque_btn.clicked.connect(self.ros_node.request_torque_status)
-        self.ask_torque_btn.show()
-
-        # wire checkbox + spinbox changes
-        self.status_auto_cb.toggled.connect(self._on_status_auto_toggled)
-        self.status_freq_spin.valueChanged.connect(self._on_status_freq_changed)
-        self.torque_auto_cb.toggled.connect(self._on_torque_auto_toggled)
-        self.torque_freq_spin.valueChanged.connect(self._on_torque_freq_changed)
-        # also persist changes
-        self.status_auto_cb.toggled.connect(self._save_poll_settings)
-        self.status_freq_spin.valueChanged.connect(self._save_poll_settings)
-        self.torque_auto_cb.toggled.connect(self._save_poll_settings)
-        self.torque_freq_spin.valueChanged.connect(self._save_poll_settings)
-        # load saved settings (must happen after widgets exist and are wired)
-        self._load_poll_settings()
-        # Step control slider + spinbox — placed below the freq controls in the sidebar
-        _ctrl_y = ty + 116   # just below "Ask for Torque" button (ty+50+26+10)
-        self.step_label = QLabel(f"Step: {self.step}", parent=self)
-        self.step_slider = QSlider(Qt.Orientation.Horizontal, parent=self)
-        self.step_slider.setRange(0, 90)
-        self.step_slider.setValue(self.step)
-        self.step_spinBox = QSpinBox(parent=self)
-        self.step_spinBox.setRange(0, 90)
-        self.step_spinBox.setValue(self.step)
-        self.step_label.move(sx, _ctrl_y)
-        self.step_slider.move(sx, _ctrl_y + 20)
-        self.step_slider.resize(sidebar_w - 42, 20)
-        self.step_spinBox.move(sx + sidebar_w - 40, _ctrl_y + 16)
-        self.step_spinBox.resize(40, 22)
-        # Warning label (hidden behind step_label; shown on bad input)
-        self.step_warning = QLabel("Step Size, Max angle is 90", parent=self)
-        self.step_warning.setStyleSheet("color: red; font-weight: bold;")
-        self.step_warning.move(sx, _ctrl_y - 14)
-        # Connect signals
-        self.step_slider.valueChanged.connect(self.step_spinBox.setValue)
-        self.step_spinBox.valueChanged.connect(self.step_slider.setValue)
-        def _on_step_changed(val):
-            # enforce max 90
-            if val > 90:
-                val = 90
-                self.step_spinBox.setValue(90)
-            self.step = val
-            self.step_label.setText(f"Step: {self.step}")
-        self.step_spinBox.valueChanged.connect(_on_step_changed)
-        # show/hide warning when user types a too-large value
-        def _on_editing_finished():
-            try:
-                txt = self.step_spinBox.text()
-                val = int(txt)
-            except Exception:
-                val = self.step
-            if val > 90:
-                # show warning and clamp
-                self.step_spinBox.setValue(90)
-                self.step = 90
-                self.step_label.setText(f"Step: {self.step}")
-            else:
-                pass
-        self.step_spinBox.editingFinished.connect(_on_editing_finished)
-
-        # Action time control
-        self.action_time = 1000
-        self.action_time_label = QLabel("Action Time", parent=self)
-        self.action_time_label.setStyleSheet("color: black; background-color: white; font-weight: bold;")
-        self.action_time_label.adjustSize()
-        self.action_time_spinBox = QSpinBox(parent=self)
-        self.action_time_spinBox.setRange(200, 2856)
-        self.action_time_spinBox.setValue(self.action_time)
-        self.action_time_label.move(sx, _ctrl_y + 48)
-        self.action_time_spinBox.move(sx + sidebar_w - 80, _ctrl_y + 44)
-        self.action_time_spinBox.resize(80, 22)
-        # Clear Errors button — below action time
-        self.error_clear_btn.resize(sidebar_w, 30)
-        self.error_clear_btn.move(sx, _ctrl_y + 76)
-        # Reinitialize button — reboots all servos then runs initialize() on STM
-        if not hasattr(self, 'reinit_btn'):
-            self.reinit_btn = QPushButton("Reinitialize", parent=self)
-            self.reinit_btn.setStyleSheet(
-                "QPushButton { background: #2980b9; color: white; font-weight: bold; "
-                "font-size: 13px; border-radius: 4px; padding: 4px; }\n"
-                "QPushButton:pressed { background: #1a5276; }")
-            self.reinit_btn.clicked.connect(self.ros_node.reinitialize_servos)
-            self.reinit_btn.show()
-        self.reinit_btn.resize(sidebar_w, 30)
-        self.reinit_btn.move(sx, _ctrl_y + 112)
-        self.action_time_label.show()
-        self.action_time_spinBox.show()
-        def _on_action_time_changed(val):
-            self.action_time = val
-        self.action_time_spinBox.valueChanged.connect(_on_action_time_changed)
-
-        # Return focus to main window on Enter or Esc while spinbox is focused
-        def _action_time_event_filter(obj, event):
-            if event.type() == QEvent.Type.KeyPress:
-                if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Escape):
-                    self.setFocus()
-                    return True
-            return False
-        self._action_time_filter = _action_time_event_filter
-        self.action_time_spinBox.installEventFilter(self)
-        self._action_time_spinbox_ref = self.action_time_spinBox
-
+        # Keep step_spinBox accessible from keyPressEvent (for +/- keys)
+        self.step_spinBox = self.sidebar.step_spinBox
         #used for shifting incrementing/decrementing
         self.increment = True
 
@@ -458,61 +277,7 @@ class servoGUI(QWidget):
         # Replaced by polling; kept as no-op for compatibility
         pass
 
-    # ── Sidebar polling control handlers ──────────────────────────────────────
-    def _on_status_auto_toggled(self, checked: bool):
-        if checked:
-            ms = max(50, int(1000 / self.status_freq_spin.value()))
-            self._status_poll_timer.start(ms)
-        else:
-            self._status_poll_timer.stop()
-
-    def _on_status_freq_changed(self, hz: float):
-        if self.status_auto_cb.isChecked():
-            ms = max(50, int(1000 / hz))
-            self._status_poll_timer.start(ms)
-
-    def _on_torque_auto_toggled(self, checked: bool):
-        if checked:
-            ms = max(50, int(1000 / self.torque_freq_spin.value()))
-            self._torque_poll_timer.start(ms)
-        else:
-            self._torque_poll_timer.stop()
-
-    def _on_torque_freq_changed(self, hz: float):
-        if self.torque_auto_cb.isChecked():
-            ms = max(50, int(1000 / hz))
-            self._torque_poll_timer.start(ms)
-
-    def _save_poll_settings(self, *_):
-        if getattr(self, "_loading_settings", False):
-            return
-        s = QSettings("NUBI", "ServoGUI")
-        s.setValue("status_auto", int(self.status_auto_cb.isChecked()))
-        s.setValue("status_hz", self.status_freq_spin.value())
-        s.setValue("torque_auto", int(self.torque_auto_cb.isChecked()))
-        s.setValue("torque_hz", self.torque_freq_spin.value())
-        s.sync()
-
-    def _load_poll_settings(self):
-        self._loading_settings = True
-        try:
-            s = QSettings("NUBI", "ServoGUI")
-            # Restore frequency values first (before toggling auto, so timers start with correct interval)
-            status_hz = float(s.value("status_hz", 1.0))
-            torque_hz = float(s.value("torque_hz", 1.0))
-            self.status_freq_spin.setValue(status_hz)
-            self.torque_freq_spin.setValue(torque_hz)
-            # Restore checkbox states — stored as int 0/1 for reliability
-            def _to_bool(val):
-                if isinstance(val, str):
-                    return val.strip().lower() in ("1", "true")
-                return bool(int(val))
-            status_auto = _to_bool(s.value("status_auto", 0))
-            torque_auto = _to_bool(s.value("torque_auto", 0))
-            self.status_auto_cb.setChecked(status_auto)
-            self.torque_auto_cb.setChecked(torque_auto)
-        finally:
-            self._loading_settings = False
+    
 
     def get_all_legs_angles(self):
         try:
@@ -619,9 +384,8 @@ class servoGUI(QWidget):
 
     #sign is 1 or -1
     def update_servo_position(self,servo_widget:servo_control_subWidget,sign:int):
-        command_dict = all_commands_dict
         try:
-            command = command_dict[servo_widget.name]
+            all_commands_dict[servo_widget.name]
         except Exception:
             print(f"Servo widget {servo_widget.id} has no valid command name; cannot publish")
             return
@@ -686,34 +450,7 @@ class servoGUI(QWidget):
             )
         print(f"move_one_servo {'HS_Servo' if servo_widget.id not in STD_SERVO_IDS else 'STD_Servo'} id={servo_widget.id} angle={new_servo_angle}")
         return
-        #IM NOT SO SURE IF THIS SHOULD BE DELETED YET
-        # STD servos still need the full array published on their topic
-        all_angles = self.get_all_servo_angles_in_same_command_array(command)
-        if not all_angles:
-            return
 
-        try:
-            servo_index = command.ids_array.index(servo_widget.id)
-        except ValueError:
-            print(f"Servo widget id {servo_widget.id} not found in command '{command.name}'")
-            return
-
-        new_servo_angle = int(servo_widget.get_angle()) + sign * getattr(self, 'step', 1)
-        new_servo_angle = max(0, min(180, new_servo_angle))
-        all_angles[servo_index] = new_servo_angle
-        # std servos have no position feedback — assume they reached the commanded angle
-        servo_widget.set_angle(new_servo_angle)
-
-        pub_topic = getattr(command, 'pub_topic', None)
-        pub_type = getattr(command, 'pub_type', None)
-        if not pub_topic or not pub_type:
-            print(f"Command '{command.name}' has no publisher info (pub_topic/pub_type); cannot publish")
-            return
-
-        msg = pub_type()
-        msg.data = all_angles + [getattr(self, 'action_time', 1000)]
-        self.ros_node.publish_generic(pub_topic, pub_type, msg)
-        print(f"Published {command.name} angles: {msg.data}")
 
 if __name__ == "__main__":
     rclpy.init()
