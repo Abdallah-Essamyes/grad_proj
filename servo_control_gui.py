@@ -9,14 +9,17 @@ from subClasses.position_manager import (servo_widget_width, load_servo_position
 from Widgets.status_table import StatusReferenceTable
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QSpinBox, QFrame, QCheckBox, QDoubleSpinBox
 from PyQt6.QtCore import QRect, Qt, QObject, pyqtSignal, QTimer, QSize, QEvent, QSettings
-from PyQt6.QtGui import QKeySequence, QPixmap, QPalette, QBrush, QPainter, QColor
+from PyQt6.QtGui import QIcon, QKeySequence, QPixmap, QPalette, QBrush, QPainter, QColor
 import sys
 import threading
 import time
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Int32,Int16MultiArray
+from pathlib import Path
 from subClasses.myDataclasses import *
+from subClasses.Servo_Pair import Servo_Pair
+
 #the id of the servos in this list should be at its respective
 #index in the low level handling
 #put the required hotkey as well
@@ -36,10 +39,15 @@ command_array(name = Upperbody,
 # Standard (non-Herkulex) servo IDs and their display pin names
 STD_SERVO_IDS = {101, 102, 103, 104}
 STD_SERVO_DISPLAY: dict[int, str] = {101: "PB13", 102: "PB14", 103: "PB15", 104: "PA8"}
-
+            #pin number in stm itself       29            30          31           8
 all_commands_dict = command_array.all_commands_dict
 torque_hotkey = "z"
-SERVO_ANGLE_LIMIT = 150
+HS_SERVO_ANGLE_LIMIT = 150 # -150 to 150
+STD_SERVO_ANGLE_LIMIT = 160 # 20 to 160
+
+STD_SERVO_MOTION_PAIRS = [Servo_Pair(servo_left_id=104, servo_right_id=103, min_angle=20, max_angle=160, servos_full_range=180,
+                                     servo_left_start_angle = 90, servo_right_start_angle = 76)]
+
 def ros_spin(node):
     # Spin this node with its own SingleThreadedExecutor to avoid
     # interfering with other spins in separate threads.
@@ -89,6 +97,11 @@ class servoGUI(QWidget):
         self.ros_thread.start()
         # Ask for torque once shortly after startup (give ROS time to connect)
         QTimer.singleShot(800, self.ros_node.request_torque_status)
+        try:
+            icon_path = Path(__file__).resolve().parent / "documents" / "robot_control_icon.jpg"
+            self.setWindowIcon(QIcon(str(icon_path)))
+        except Exception as e:
+            print(f"Failed to set window icon: {e}")
 
     def initlayout(self):
         # ===== Load background image =====
@@ -167,9 +180,24 @@ class servoGUI(QWidget):
                     self.handle_widget_dragged)
                 self.servo_control_subWidgets_dict[servo_id].move(positions[servo_id][0],
                                                                   positions[servo_id][1])
-                # std servos start at 90 (mid-range)
+                # std servos start at 90 (mid-range) unless specified in a pair
                 if servo_id in STD_SERVO_IDS:
-                    self.servo_control_subWidgets_dict[servo_id].set_angle(90)        
+                    # 1. Default start angle for independent standard servos
+                    start_angle = 90
+                    
+                    # 2. Check if the servo is part of a pair
+                    for pair in STD_SERVO_MOTION_PAIRS:
+                        if servo_id == pair.servo_left_id:
+                            start_angle = pair.servo_left_start_angle
+                            break
+                        elif servo_id == pair.servo_right_id:
+                            start_angle = pair.servo_right_start_angle
+                            break
+                            
+                    # 3. Apply the calculated start angle
+                    self.servo_control_subWidgets_dict[servo_id].set_angle(start_angle) 
+
+
         xTorque,Ytorque = 50,25
         self.torque_lock_widget = torque_control_subWidget(torque_hotkey)
         self.torque_lock_widget.move(xTorque,Ytorque)
@@ -600,20 +628,65 @@ class servoGUI(QWidget):
 
         # Herkulex servos: only this widget's angle is needed — skip the full-array read
         # (other widgets may be None/"N" and would cause int() failures)
-        if servo_widget.id not in STD_SERVO_IDS:
-            current = servo_widget.angle  # None if unpowered/unread
-            if current is None:
-                current = 0
-            new_servo_angle = current + sign * getattr(self, 'step', 1)
-            new_servo_angle = max(-SERVO_ANGLE_LIMIT, min(SERVO_ANGLE_LIMIT, new_servo_angle))
+        
+        current = servo_widget.angle  # None if unpowered/unread
+        if current is None:
+            print(f"Error update_servo_position: servo widget {servo_widget.id}, check that the angles are being read and are not None")
+            return
+            
+        new_servo_angle = current + sign * getattr(self, 'step', 1)
+        
+        # 1. Clamp the angle based on servo type
+        if servo_widget.id in STD_SERVO_IDS:
+            new_servo_angle = max(180-STD_SERVO_ANGLE_LIMIT, min(STD_SERVO_ANGLE_LIMIT, new_servo_angle))            
+            
+        else:
+            new_servo_angle = max(-HS_SERVO_ANGLE_LIMIT, min(HS_SERVO_ANGLE_LIMIT, new_servo_angle))
+
+        action_time = getattr(self, 'action_time', 500)
+        
+        # 2. Check if this servo is part of a motion pair
+        matched_pair = None
+        for pair in STD_SERVO_MOTION_PAIRS:
+            if servo_widget.id in pair.get_ids():
+                matched_pair = pair
+                break  # Stop looking once we find the matching pair
+                
+        # 3. Execute the movement (Mirrored vs Single)
+        if matched_pair:
+            # Calculate the mirrored angles using your dataclass logic
+            is_safe = matched_pair.set_angle(servo_widget.id, new_servo_angle)
+            
+            if is_safe:
+                # Move Left Servo
+                self.ros_node.move_one_servo(
+                    matched_pair.servo_left_id,
+                    matched_pair.servo_left_angle,
+                    action_time
+                )
+                # Move Right Servo
+                self.ros_node.move_one_servo(
+                    matched_pair.servo_right_id,
+                    matched_pair.servo_right_angle,
+                    action_time
+                )
+                self.servo_control_subWidgets_dict[matched_pair.servo_left_id].set_angle(matched_pair.servo_left_angle)
+                self.servo_control_subWidgets_dict[matched_pair.servo_right_id].set_angle(matched_pair.servo_right_angle)
+            else:
+                # Math hit the min/max angle limits defined in Servo_Pair
+                print(f"Safety limits exceeded for pair: {matched_pair.get_ids()}")
+                
+        else:
+            # Not in a pair, move normally
+            servo_widget.set_angle(new_servo_angle)
             self.ros_node.move_one_servo(
                 servo_widget.id,
                 new_servo_angle,
-                getattr(self, 'action_time', 500)
+                action_time
             )
-            print(f"move_one_servo id={servo_widget.id} angle={new_servo_angle}")
-            return
-
+        print(f"move_one_servo {'HS_Servo' if servo_widget.id not in STD_SERVO_IDS else 'STD_Servo'} id={servo_widget.id} angle={new_servo_angle}")
+        return
+        #IM NOT SO SURE IF THIS SHOULD BE DELETED YET
         # STD servos still need the full array published on their topic
         all_angles = self.get_all_servo_angles_in_same_command_array(command)
         if not all_angles:

@@ -1,31 +1,26 @@
 import os
 from servo_control_gui import *
 from Widgets.json_widget import *
+from PyQt6.QtGui import QFont, QIcon
 
-class robot_control_buttons(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.initlayout()
-    
-    def initlayout(self):
-        # Removed hard-coded stance buttons; actions now available in `jsonGUI` via "Do All"
-        self.vlayout = QVBoxLayout()
-        self.setLayout(self.vlayout)
 
 class robotGUI(QWidget):
     def __init__(self):
         super().__init__()
         self.jsonGUI = jsonGUI() 
-        self.robot_control_buttons = robot_control_buttons()
         self.servo_control_gui = servoGUI()
         self.initlayout()
-
+        try:
+            icon_path = Path(__file__).resolve().parent / "documents" / "robot_control_icon.jpg"
+            self.setWindowIcon(QIcon(str(icon_path)))
+        except Exception as e:
+            print(f"Failed to set window icon: {e}")
+            
     def initlayout(self):
         # Wire jsonGUI to read action time from the servo control GUI spinbox
         self.jsonGUI.action_time_source = lambda: self.servo_control_gui.action_time
         self.hlayout = QHBoxLayout()
         self.hlayout.addWidget(self.servo_control_gui)
-        self.hlayout.addWidget(self.robot_control_buttons)
         self.hlayout.addWidget(self.jsonGUI)
         self.setLayout(self.hlayout)
     def keyPressEvent(self, event):

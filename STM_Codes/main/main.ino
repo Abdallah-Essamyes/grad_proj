@@ -12,40 +12,7 @@
 #include <std_msgs/msg/string.h>
 #include <Servo.h>
 #include <string.h>
-// rcutils logging is unreliable on STM32 microROS — use /nubi_debug publisher instead
-#define NUM_STD_SERVOS 4
-#define NUM_LEGS 12
-#define NUM_UPPDERBODY 7
-// ------------------- Index protocol (status_command / status_response) --------
-// PC -> STM (status_command data[0]):
-//   0 = request status array
-//   2 = torque change  (data[1]: 1=ON, 0=OFF)
-//   3 = request torque status array
-//   6 = reset error
-//   7 = reinitialize servos (reboot all + clearError + ACK + torqueON)
-//   8 = move one servo  data[1]=servo_id  data[2]=angle(deg, int16)  data[3]=play_time(ms)
-// STM -> PC (status_response data[0]):
-//   1 = status array    (data[1..40] = 20 × [statusError, statusDetail])
-//   5 = torque array    (data[1..20] = 20 × torque byte)
-#define CMD_REQUEST_STATUS   0
-#define CMD_TORQUE_SET       2
-#define CMD_REQUEST_TORQUE   3
-#define CMD_RESET_ERROR      6
-#define CMD_REINITIALIZE     7
-#define CMD_MOVE_ONE         8
-#define RESP_STATUS_ARRAY    1
-#define RESP_TORQUE_ARRAY    5
-#define STATUS_ARRAY_SIZE     41   // index byte + up to 40 data bytes
-// number of motors
-int n=20;
-
-
-const uint leg_motor_indecies[NUM_LEGS] = {16,6,7,8,10,9,17,18,12,13,15,14};
-const uint upper_motor_indecies[NUM_UPPDERBODY] = {0,1,2,3,4,11,19};
-// Standard (non-Herkulex) servos — pin order matches upperbody_command.data [7..10]
-const int std_servo_pins[NUM_STD_SERVOS] = {PB13, PB14, PB15, PA8};
-Servo std_servo[NUM_STD_SERVOS];
-
+#include "constants.h"
 // ------------------- micro-ROS objects defined once -------------------
 rclc_executor_t executor;
 rclc_support_t support;
@@ -96,12 +63,6 @@ void debug_log(const char* msg) {
   debug_msg.data.size = strlen(debug_char_buf);
   rcl_publish(&debug_publisher, &debug_msg, NULL);
 }
-
-// loops on servos by turn — separate indices for legs and upper body
-int leg_feedback_index = 0;
-int upper_feedback_index = 0;
-#define FEEDBACK_TOTAL 19   // 12 legs + 7 upper (kept for reference)
-
 
 // statusError/statusDetail are now local to status_cmd_callback
 
@@ -225,9 +186,19 @@ void status_cmd_callback(const void * msgin){
     int16_t servo_id  = status_command.data.data[1];
     int16_t angle     = status_command.data.data[2];
     int16_t play_time = status_command.data.data[3];
+    for(int i = 0; i < NUM_STD_SERVOS; i++)
+    {
+        if(std_servo_ids[i] == servo_id){
+            std_servo[i].write(angle);
+            char mv_buf[64];
+            snprintf(mv_buf, sizeof(mv_buf), "[NUBI] moveOne STD_SERVO id=%d angle=%d t=%d", (int)servo_id, (int)angle, (int)play_time);
+            debug_log(mv_buf);
+            return; // If it's a standard servo command, we handle it here and return early without calling Herkulex.moveOneAngle
+        }
+    }   
     Herkulex.moveOneAngle(servo_id, (float)angle, (int)play_time, LED_BLUE);
     char mv_buf[64];
-    snprintf(mv_buf, sizeof(mv_buf), "[NUBI] moveOne id=%d angle=%d t=%d", (int)servo_id, (int)angle, (int)play_time);
+    snprintf(mv_buf, sizeof(mv_buf), "[NUBI] moveOne HS_Servo id=%d angle=%d t=%d", (int)servo_id, (int)angle, (int)play_time);
     debug_log(mv_buf);
   }
   else if(idx == CMD_REINITIALIZE){
@@ -255,7 +226,7 @@ void leg_cmd_sub_setup(){
   legs_command.data.data = memory_buffer;
   legs_command.data.size = 0;
 
-  RCCHECK(rclc_subscription_init_best_effort(
+  RCCHECK(rclc_subscription_init_default(
     &leg_command_subscriber,
     &node,
     ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int16MultiArray),
@@ -286,7 +257,7 @@ void status_cmd_sub_setup(){
   status_command.data.data     = status_cmd_buffer;
   status_command.data.size     = 0;
 
-  RCCHECK(rclc_subscription_init_best_effort(
+  RCCHECK(rclc_subscription_init_default(
     &status_command_subscriber,
     &node,
     ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int16MultiArray),
@@ -463,5 +434,5 @@ void loop() {
   // status_response is published on demand via status_cmd_callback
 
 
-  RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(2)));
+  RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(4)));
 }

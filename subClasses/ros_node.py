@@ -9,7 +9,11 @@ _BE_QOS = QoSProfile(
     history=HistoryPolicy.KEEP_LAST,
     depth=1
 )
-
+_RELIABLE_QOS = QoSProfile(
+    reliability=ReliabilityPolicy.RELIABLE,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=10
+)
 servo_legs_sub_topic      = "/legs_feedback"
 servo_legs_pub_topic      = "/legs_command"
 Legs                      = "Legs"
@@ -42,13 +46,14 @@ class ServoControlROSNode(Node, QObject):
     def __init__(self):
         Node.__init__(self, 'servo_gui_ros_node')
         QObject.__init__(self)
-
+        # Explicitly define a Reliable QoS profile
+ 
         self._dynamic_publishers: dict[str, Publisher] = {}
 
         self.legs_sub = self.create_subscription(
             Int16MultiArray, servo_legs_sub_topic, self.legs_callback, _BE_QOS)
         self.legs_pub = self.create_publisher(
-            Int16MultiArray, servo_legs_pub_topic, _BE_QOS)
+            Int16MultiArray, servo_legs_pub_topic, _RELIABLE_QOS)
 
         self.upperbody_sub = self.create_subscription(
             Int16MultiArray, servo_upperbody_sub_topic, self.upperbody_callback, _BE_QOS)
@@ -57,7 +62,7 @@ class ServoControlROSNode(Node, QObject):
 
         # Unified command publisher (PC -> STM)
         self.status_pub = self.create_publisher(
-            Int16MultiArray, status_command_topic, _BE_QOS)
+            Int16MultiArray, status_command_topic, _RELIABLE_QOS)
 
         # Unified response subscriber (STM -> PC)
         self.status_sub = self.create_subscription(
