@@ -13,7 +13,7 @@
 |  6|    Reset error| (none)| STM calls clearError(BROADCAST_ID)| None|
 |  7|    Reinitialize servos | (none)| STM reboots all 20 servos (50ms each)  waits 1500ms, then runs initialize()(clearError + ACK(1) + torqueON) plus a second clearError+torqueON pass| None
 | 8 |   Move one servo| data[1]: servo_id (0-19) <br> data[2]: angle in degrees (int16, -160..160) <br> data[3]: play_time in ms (0-2856)| Move one servo only | None
-
+| 9 | Collision Detection Flag | | |
 ## STM -> PC  (/status_response)
 
 |INDEX|  MEANING|  PAYLOAD|

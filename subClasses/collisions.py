@@ -113,6 +113,9 @@ class LegCommandVerifier(rclpy.node.Node):
         self._last_legs_angles:  list | None = None
         self._last_upper_angles: list | None = None
         self._feedback_state_lock = threading.Lock()
+        # Throttle live collision checks to 20 Hz max
+        self._last_live_check_time = 0.0
+        self._live_check_interval  = 0.05  # seconds (1/20 Hz)
 
         # ── background sender thread ───────────────────────
         self._sender = threading.Thread(target=self._send_worker, daemon=True)
@@ -132,7 +135,12 @@ class LegCommandVerifier(rclpy.node.Node):
 
     def _check_live_collision(self) -> None:
         """Build mujoco-ordered angle array from latest legs + upper feedback and check collision.
-        Only runs when both feedback arrays are available. STD servos are not in mujoco."""
+        Only runs when both feedback arrays are available. STD servos are not in mujoco.
+        Throttled to self._live_check_interval (default 20 Hz) to avoid overloading MuJoCo."""
+        now = time.monotonic()
+        if now - self._last_live_check_time < self._live_check_interval:
+            return
+        self._last_live_check_time = now
         with self._feedback_state_lock:
             if self._last_legs_angles is None or self._last_upper_angles is None:
                 self.get_logger().info("[LIVE CHECK] Skipped — waiting for both legs and upper feedback")
