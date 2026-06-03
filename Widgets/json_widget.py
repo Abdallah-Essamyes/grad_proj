@@ -9,9 +9,19 @@ import json
 from collections import defaultdict
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Bool,Int16MultiArray
+from std_msgs.msg import Bool, Int16MultiArray, Float32MultiArray
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 import time
+
+from pathlib import Path
+import sys
+try:
+    from settings.settings import *
+except ModuleNotFoundError:
+    parent_dir = str(Path(__file__).resolve().parent.parent)
+    # 2. Add it to Python's system path
+    sys.path.append(parent_dir)
+    from settings.settings import *
 
 _BE_QOS = QoSProfile(
     reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -51,27 +61,27 @@ class jsonGUI(QWidget):
         )
         self.ros_thread.start()
         # --- Publishers ---
-        self.publisher_legs = self.node.create_publisher(Int16MultiArray,"legs_command",_BE_QOS)
-        self.publisher_upperbody = self.node.create_publisher(Int16MultiArray,"upperbody_command",_BE_QOS)
+        self.publisher_legs = self.node.create_publisher(LEGS_MSG_TYPE, LEGS_PUB_TOPIC, LEGS_PUB_QOS)
+        self.publisher_upperbody = self.node.create_publisher(UPPERBODY_MSG_TYPE, UPPERBODY_PUB_TOPIC, UPPERBODY_PUB_QOS)
         self.legs_sub = self.node.create_subscription(
-            Int16MultiArray,
-            "legs_feedback",
+            LEGS_MSG_TYPE,
+            LEGS_SUB_TOPIC,
             self.legs_feedback_callback,
-            _BE_QOS
+            LEGS_SUB_QOS
         )
         self.arms_sub = self.node.create_subscription(
-            Int16MultiArray,
-            "upperbody_feedback",
+            UPPERBODY_MSG_TYPE,
+            UPPERBODY_SUB_TOPIC,
             self.arms_feedback_callback,
-            _BE_QOS
+            UPPERBODY_SUB_QOS
         )
 
-    def legs_feedback_callback(self,angles_list:Int16MultiArray):
+    def legs_feedback_callback(self, angles_list: Float32MultiArray):
         # Always update so current_legs_angles reflects live state including 999 sentinels.
         # Recording is blocked in read_positions() if any sentinel is present.
         self.current_legs_angles = list(angles_list.data)
 
-    def arms_feedback_callback(self,angles_list:Int16MultiArray):
+    def arms_feedback_callback(self, angles_list: Float32MultiArray):
         self.current_arms_angles = list(angles_list.data)
 
     def initLayout(self):
@@ -231,12 +241,12 @@ class jsonGUI(QWidget):
         #   [0..6] = Herkulex angles, [7..10] = std servo angles (0 = no change), [11] = playtime
         # STM legs_command expects 13 elements:
         #   [0..11] = leg angles, [12] = playtime
-        upper_cmd = Int16MultiArray()
-        lower_cmd = Int16MultiArray()
-        upper = upper + [90, 90, 90, 90, t]
-        lower = lower + [t] 
-        upper_cmd.data = upper    # pad 4 std-servo slots + playtime
-        lower_cmd.data = lower                # append playtime
+        upper = upper + [90.0, 90.0, 90.0, 90.0, float(t)]
+        lower = lower + [float(t)]
+        upper_cmd = Float32MultiArray()
+        upper_cmd.data = [float(v) for v in upper]   # 7 HS + 4 std-servo slots + playtime
+        lower_cmd = Float32MultiArray()
+        lower_cmd.data = [float(v) for v in lower]   # 12 leg angles + playtime
         print(f"Action: {json_key}  (t={t}ms)")
         print("Upper Body:", upper)
         print("Lower Body:", lower)

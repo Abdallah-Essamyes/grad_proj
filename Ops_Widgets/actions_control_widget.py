@@ -24,7 +24,7 @@ from pathlib import Path
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
-from std_msgs.msg import Int16MultiArray
+from std_msgs.msg import Float32MultiArray
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QKeySequence
+from settings.settings import *
 
 _BE_QOS = QoSProfile(
     reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -73,10 +74,10 @@ class ActionsControlWidget(QWidget):
             rclpy.init()
         self._node = rclpy.create_node("actions_control_widget")
         self._pub_upper = self._node.create_publisher(
-            Int16MultiArray, "upperbody_command", _BE_QOS
+            UPPERBODY_MSG_TYPE, UPPERBODY_PUB_TOPIC, UPPERBODY_PUB_QOS
         )
         self._pub_legs = self._node.create_publisher(
-            Int16MultiArray, "legs_command", _BE_QOS
+            LEGS_MSG_TYPE, LEGS_PUB_TOPIC, LEGS_PUB_QOS
         )
         self._ros_thread = threading.Thread(
             target=_ros_spin, args=(self._node,), daemon=True

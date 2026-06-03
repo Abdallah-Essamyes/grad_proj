@@ -124,12 +124,13 @@ class servo_control_subWidget(QWidget):
         else:
             self.angle_label.setText(f"θ: {angle_str}")
 
-    def set_angle(self, num: int):
-        if not isinstance(num, int):
-            print(f"Error: angle must be int, got {type(num)}")
+    def set_angle(self, num: int | float):
+        # Accept floats (from Float32MultiArray feedback) — store with 2 dp precision
+        if not isinstance(num, (int, float)):
+            print(f"Error: angle must be int or float, got {type(num)}")
             return
         # 999 = checksum noise (servo responded, CRC failed) — keep last display silently
-        if abs(num) == 999:
+        if abs(num) == 999 or abs(num) == 999.0:
             return
         # 1004 = timeout sentinel (servo did not respond = unpowered/disconnected)
         # Set angle to None so the label shows "θ: --"
@@ -138,7 +139,7 @@ class servo_control_subWidget(QWidget):
             self.torque = None  # also clear torque — unpowered servo has no torque state
             self._refresh_angle_label()
             return
-        self.angle = num
+        self.angle = round(float(num), 2)
         self._refresh_angle_label()
 
     def set_torque(self, on: bool) -> None:

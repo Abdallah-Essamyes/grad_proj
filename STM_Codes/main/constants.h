@@ -5,6 +5,7 @@
 #include <rclc/executor.h>
 #include <std_msgs/msg/int16.h>
 #include <std_msgs/msg/int16_multi_array.h>
+#include <std_msgs/msg/float32_multi_array.h>
 #include <std_msgs/msg/bool.h>
 #include <std_msgs/msg/u_int8_multi_array.h>
 #include <std_msgs/msg/string.h>
@@ -41,7 +42,8 @@ Servo std_servo[NUM_STD_SERVOS];
 #define CMD_REQUEST_TORQUE   3
 #define CMD_RESET_ERROR      6
 #define CMD_REINITIALIZE     7
-#define CMD_MOVE_ONE         8
+#define CMD_MOVE_ONE              8
+#define COLLISION_DETECTION_FLAG  9
 #define RESP_STATUS_ARRAY    1
 #define RESP_TORQUE_ARRAY    5
 #define STATUS_ARRAY_SIZE     41   // index byte + up to 40 data bytes

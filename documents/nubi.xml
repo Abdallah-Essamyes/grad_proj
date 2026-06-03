@@ -1,0 +1,192 @@
+<mujoco model="NUBI">
+  <compiler angle="radian" meshdir="meshes/" autolimits="true" />
+  <option gravity="0 0 -9.81" timestep="0.002" iterations="50" tolerance="1e-4">
+    <flag contact="enable" gravity="enable" />
+  </option>
+  <asset>
+    <mesh name="base_link_mesh" file="base_link.STL" />
+    <mesh name="chest_mesh" file="chest.STL" />
+    <mesh name="LAnkle_mesh" file="LAnkle.STL" />
+    <mesh name="LFemur_mesh" file="LFemur.STL" />
+    <mesh name="LFoot_mesh" file="LFoot.STL" />
+    <mesh name="LForearm_mesh" file="LForearm.STL" />
+    <mesh name="LHip_mesh" file="LHip.STL" />
+    <mesh name="LHumerus_mesh" file="LHumerus.STL" />
+    <mesh name="LPelvis_mesh" file="LPelvis.STL" />
+    <mesh name="LShoulder_mesh" file="LShoulder.STL" />
+    <mesh name="LTibia_mesh" file="LTibia.STL" />
+    <mesh name="RAnkle_mesh" file="RAnkle.STL" />
+    <mesh name="RFemur_mesh" file="RFemur.STL" />
+    <mesh name="RFoot_mesh" file="RFoot.STL" />
+    <mesh name="RForearm_mesh" file="RForearm.STL" />
+    <mesh name="RHip_mesh" file="RHip.STL" />
+    <mesh name="RHumerus_mesh" file="RHumerus.STL" />
+    <mesh name="RPelvis_mesh" file="RPelvis.STL" />
+    <mesh name="RShoulder_mesh" file="RShoulder.STL" />
+    <mesh name="RTibia_mesh" file="RTibia.STL" />
+    <texture type="skybox" builtin="gradient" rgb1="0.4 0.6 0.8" rgb2="0 0 0" width="512" height="512" />
+    <texture name="texplane" type="2d" builtin="checker" rgb1="0.2 0.3 0.4" rgb2="0.1 0.15 0.2" width="512" height="512" mark="cross" markrgb="0.8 0.8 0.8" />
+    <material name="matplane" reflectance="0.3" texture="texplane" texrepeat="1 1" texuniform="true" />
+  </asset>
+  <default>
+    <default class="visual">
+      <!--0.435 0.941 0.341 green-->
+      <geom type="mesh" contype="0" conaffinity="0" group="1" rgba="1 1 1 1" mass="0" />
+    </default>
+    <default class="collision">
+      <geom type="box" group="0" rgba="0.8 0.2 0.2 0.4" friction="1.2 0.01 0.001" margin="0.002" contype="2" conaffinity="3" />
+    </default>
+    <joint damping="0.1" frictionloss="0.05" armature="0.002" limited="true" range="-2.61 2.61" margin="0.01" />
+    <position ctrlrange="-2.61 2.61" forcelimited="true" />
+    <default class="drs_0101">
+      <joint armature="0.002" damping="0.1" />
+      <position kp="20" kv="2.0" forcerange="-1.2 1.2" />
+    </default>
+  </default>
+  <worldbody>
+    <light directional="true" diffuse="0.8 0.8 0.8" specular="0.2 0.2 0.2" pos="0 0 5" dir="0 0 -1" />
+    <geom name="floor" type="plane" size="5 5 0.05" material="matplane" friction="1.2 0.01 0.001" group="2" contype="1" conaffinity="1"/>
+    <body name="base_link" pos="0 0 0.5">
+      <freejoint name="root" />
+      <geom class="visual" mesh="base_link_mesh" />
+      <geom class="collision" size="0.05 0.02 0.0175" pos="0 -0.035 0" />
+      <body name="RPelvis" pos="-0.036449 -0.034878 -0.021648" quat="0.499998 -0.5 0.500002 -0.5">
+        <inertial pos="0.007807 0.042111 0.034485" quat="0.5 0.5 0.5 0.5" mass="0.008" diaginertia="3.62733e-06 3.37733e-06 2.83333e-07" />
+        <joint name="RHip_yaw" axis="0 1 0" class="drs_0101" /> <!-- Matches URDF -->
+        <geom class="visual" mesh="RPelvis_mesh" />
+        <geom class="collision" size="0.0355 0.0025 0.01" pos="0 0.002 0" />
+        <body name="RHip" pos="0 0.027574 0" quat="0.502821 -0.507363 0.49263 -0.49706">
+          <inertial pos="-0.00451761 0.00584714 0.00680019" quat="0.707107 0 0 0.707107" mass="0.099" diaginertia="4.16625e-05 3.23812e-05 2.41313e-05" />
+          <joint name="RHip_roll" axis="0.020518 0 0.999789" class="drs_0101" /> <!-- Matches URDF -->
+          <geom class="visual" mesh="RHip_mesh" />
+          <geom class="collision" size="0.0225 0.015 0.0275" pos="-0.013 0 -0.005" />
+          <body name="RFemur" quat="0.707068 0.00725442 0.00725445 0.707071">
+            <inertial pos="-0.00183904 0.0648853 0.00822619" quat="0.5 0.5 0.5 0.5" mass="0.02" diaginertia="4.875e-06 3.41667e-06 1.54167e-06" />
+            <joint name="RHip_pitch" axis="-1 0 0" class="drs_0101" /> <!-- Matches URDF -->
+            <geom class="visual" mesh="RFemur_mesh" />
+            <geom class="collision" size="0.0225 0.0025 0.015" pos="0 0.06 0.012" />
+            <body name="RTibia" pos="0 0.077764 -1.9824e-05" quat="0.495503 -0.504455 0.495505 0.504457">
+              <inertial pos="-0.0173131 -0.00105514 0.0160961" quat="0 0.707107 0 0.707107" mass="0.07" diaginertia="2.11458e-05 1.70625e-05 1.45833e-05" />
+              <joint name="RKnee_pitch" axis="0 -0.999839 -0.017944" class="drs_0101" /> <!-- Matches URDF -->
+              <geom class="visual" mesh="RTibia_mesh" />
+              <geom class="collision" size="0.0225 0.02 0.015" pos="-0.013 0 0.006" />
+              <body name="RAnkle" pos="-0.01173 -0.0013874 0.077438" quat="0.00624862 -0.70514 0.00646593 -0.709011">
+                <inertial pos="-0.00449028 0.0119293 0.00720708" quat="0.707107 0 0 0.707107" mass="0.099" diaginertia="4.16625e-05 3.81563e-05 2.99062e-05" />
+                <joint name="RAnkle_pitch" axis="0 1 0" class="drs_0101" /> <!-- Corrected to URDF (0 1 0) -->
+                <geom class="visual" mesh="RAnkle_mesh" />
+                <geom class="collision" size="0.0225 0.02 0.0275" pos="-0.014 0 0.015" />
+                <body name="RFoot" quat="0.49636 0.499124 -0.503614 -0.500874">
+                  <inertial pos="-0.00435903 0.0135169 -0.0286669" quat="0.5 0.5 -0.5 0.5" mass="0.026" diaginertia="2.3868e-05 1.75847e-05 6.35267e-06" />
+                  <joint name="RAnkle_roll" axis="0 1 0" class="drs_0101" /> <!-- Corrected to URDF (0 1 0) -->
+                  <geom class="visual" mesh="RFoot_mesh" />
+                  <geom class="collision" size="0.027 0.045 0.002" pos="-0.005 0.013 -0.028" />
+                  <site name="r_foot_site" pos="-0.005 0.013 -0.028" size="0.01" rgba="1 0 0 1" />
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="LPelvis" pos="0.034208 -0.034878 -0.021648" quat="0.497391 0.497393 -0.502595 -0.502593">
+        <inertial pos="0.00818363 -0.0421112 0.0360881" quat="0.5 0.5 0.5 0.5" mass="0.008" diaginertia="3.62733e-06 3.37733e-06 2.83333e-07" />
+        <joint name="LHip_yaw" axis="0 -1 0" class="drs_0101" /> <!-- Matches URDF -->
+        <geom class="visual" mesh="LPelvis_mesh" />
+        <geom class="collision" size="0.0355 0.0025 0.01" pos="0 -0.002 0" />
+        <body name="LHip" pos="0 -0.027574 0" quat="0.503567 -0.499168 -0.500783 0.496456">
+          <inertial pos="-0.00455469 0.00757125 -0.00440685" quat="0.707107 0 0 0.707107" mass="0.099" diaginertia="4.16625e-05 3.23812e-05 2.41313e-05" />
+          <joint name="LHip_roll" axis="0.00546537 0 -0.999985" class="drs_0101" /> <!-- Matches URDF -->
+          <geom class="visual" mesh="LHip_mesh" />
+          <geom class="collision" size="0.0225 0.015 0.0275" pos="-0.013 0 0.005" />
+          <body name="LFemur" quat="0.707103 -0.00191625 -0.00191626 0.707105">
+            <inertial pos="-2.38766e-06 0.0751215 0.00345399" quat="0.5 0.5 0.5 0.5" mass="0.02" diaginertia="4.875e-06 3.41667e-06 1.54167e-06" />
+            <joint name="LHip_pitch" axis="-1 0 0" class="drs_0101" /> <!-- Corrected to URDF (-1 0 0) -->
+            <geom class="visual" mesh="LFemur_mesh" />
+            <geom class="collision" size="0.0225 0.0025 0.015" pos="0 0.07 0" />
+            <body name="LTibia" pos="0 0.077764 0" quat="0.5 -0.5 -0.499999 -0.500002">
+              <inertial pos="-0.017312 0.00260477 0.0161131" quat="0 0.707107 0 0.707107" mass="0.07" diaginertia="2.11458e-05 1.70625e-05 1.45833e-05" />
+              <joint name="LKnee_pitch" axis="0 1 0" class="drs_0101" /> <!-- Matches URDF -->
+              <geom class="visual" mesh="LTibia_mesh" />
+              <geom class="collision" size="0.0225 0.02 0.015" pos="-0.013 0 0.006" />
+              <body name="LAnkle" pos="-0.01173 0.0013874 0.077438" quat="0.702924 3.0639e-08 -0.711265 -3.0639e-08">
+                <inertial pos="-0.00449343 0.00928858 -0.00488294" quat="0.707107 0 0 0.707107" mass="0.099" diaginertia="4.16625e-05 3.81563e-05 2.99062e-05" />
+                <joint name="LAnkle_pitch" axis="0 1 0" class="drs_0101" /> <!-- Corrected to URDF (0 1 0) -->
+                <geom class="visual" mesh="LAnkle_mesh" />
+                <geom class="collision" size="0.0225 0.02 0.0275" pos="-0.014 0 -0.015" />
+                <body name="LFoot" quat="0.502869 -0.507316 -0.492667 -0.497023">
+                  <inertial pos="-0.0135837 0.0288119 0.00344363" quat="0.5 0.5 0.5 0.5" mass="0.026" diaginertia="2.3868e-05 1.75847e-05 6.35267e-06" />
+                  <joint name="LAnkle_roll" axis="-1 0 0" class="drs_0101" /> <!-- Corrected to URDF (-1 0 0) -->
+                  <geom class="visual" mesh="LFoot_mesh" />
+                  <geom class="collision" size="0.045 0.002 0.027" pos="-0.013 0.028 0.005" />
+                  <site name="l_foot_site" pos="-0.013 0.028 0.005" size="0.01" rgba="1 0 0 1" />
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="chest" pos="0 -0.046578 0.028478" quat="0.500048 -0.499952 -0.49995 -0.50005">
+        <inertial pos="0.023725 -0.00161286 0.000103876" quat="0.707107 0.707107 0 0" mass="0.172" diaginertia="0.000297058 0.000297058 7.16667e-05" />
+        <joint name="core" axis="0 -1 0" class="drs_0101" /> <!-- Matches URDF -->
+        <geom class="visual" mesh="chest_mesh" />
+        <geom class="collision" size="0.025 0.0675 0.025" pos="0.02 0 0" />
+        <body name="RShoulder" pos="0.036528 -0.073721 5e-05" quat="0.704061 2.23276e-08 -0.71014 -2.23276e-08">
+          <inertial pos="-0.00131252 -0.00856617 -7.4122e-09" quat="0.5 0.5 0.5 0.5" mass="0.005" diaginertia="1.01042e-06 8.54167e-07 1.77083e-07" />
+          <joint name="RShoulder_pitch" axis="0 -1 0" class="drs_0101" /> <!-- Matches URDF -->
+          <geom class="visual" mesh="RShoulder_mesh" />
+          <geom class="collision" size="0.0225 0.0025 0.01" pos="0 -0.0025 0" />
+          <body name="RHumerus" pos="0 -0.0215 0" quat="0.499998 0.500002 0.5 -0.5">
+            <inertial pos="-0.0474047 0.00155518 0.00068816" quat="0 0.707107 0 0.707107" mass="0.0545" diaginertia="2.04375e-05 1.8966e-05 6.7035e-06" />
+            <joint name="RShoulder_roll" axis="0 -1 0" class="drs_0101" /> <!-- Matches URDF -->
+            <geom class="visual" mesh="RHumerus_mesh" />
+            <geom class="collision" size="0.03 0.015 0.012" pos="-0.021 0 0" />
+            <body name="RForearm" pos="-0.067878 0.0016 0" quat="0.707105 -0.707108 0 0">
+              <inertial pos="-0.0045111 0.015875 0.002325" quat="0 0.707107 0 0.707107" mass="0.0495" diaginertia="1.28453e-05 1.07291e-05 6.86813e-06" />
+              <joint name="RElbow_pitch" axis="0 -1 0" class="drs_0101" /> <!-- Matches URDF -->
+              <geom class="visual" mesh="RForearm_mesh" />
+              <geom class="collision" size="0.0225 0.0165 0.012" pos="-0.012 0 0" />
+            </body>
+          </body>
+        </body>
+        <body name="LShoulder" pos="0.036528 0.070779 5e-05" quat="-2.60849e-06 0.704061 2.58616e-06 0.71014">
+          <inertial pos="-0.00131252 -0.00856617 -7.45284e-09" quat="0.5 0.5 0.5 0.5" mass="0.005" diaginertia="1.01042e-06 8.54167e-07 1.77083e-07" />
+          <joint name="LShoulder_pitch" axis="0 -1 0" class="drs_0101" /> <!-- Matches URDF -->
+          <geom class="visual" mesh="LShoulder_mesh" />
+          <geom class="collision" size="0.0225 0.0025 0.01" pos="0 -0.0025 0" />
+          <body name="LHumerus" pos="0 -0.0215 0" quat="0.499998 0.5 -0.5 0.500002">
+            <inertial pos="-0.0474049 0.00145883 -0.000615198" quat="0 0.707107 0 0.707107" mass="0.0545" diaginertia="2.04375e-05 1.8966e-05 6.7035e-06" />
+            <joint name="LShoulder_roll" axis="0 -1 0" class="drs_0101" /> <!-- Matches URDF -->
+            <geom class="visual" mesh="LHumerus_mesh" />
+            <geom class="collision" size="0.03 0.015 0.012" pos="-0.021 0 0" />
+            <body name="LForearm" pos="-0.067878 0.0015 0" quat="0.707105 0.707108 0 0">
+              <inertial pos="-0.0045111 0.015925 0.002325" quat="0 0.707107 0 0.707107" mass="0.0495" diaginertia="1.28453e-05 1.07291e-05 6.86813e-06" />
+              <joint name="LElbow_pitch" axis="0 -1 0" class="drs_0101" /> <!-- Matches URDF -->
+              <geom class="visual" mesh="LForearm_mesh" />
+              <geom class="collision" size="0.0225 0.0165 0.012" pos="-0.012 0 0" />
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <position name="RHip_yaw_p"    joint="RHip_yaw"    class="drs_0101" />
+    <position name="RHip_roll_p"   joint="RHip_roll"   class="drs_0101" />
+    <position name="RHip_pitch_p"  joint="RHip_pitch"  class="drs_0101" />
+    <position name="RKnee_pitch_p" joint="RKnee_pitch" class="drs_0101" />
+    <position name="RAnkle_pitch_p" joint="RAnkle_pitch" class="drs_0101" />
+    <position name="RAnkle_roll_p" joint="RAnkle_roll" class="drs_0101" />
+    <position name="LHip_yaw_p"    joint="LHip_yaw"    class="drs_0101" />
+    <position name="LHip_roll_p"   joint="LHip_roll"   class="drs_0101" />
+    <position name="LHip_pitch_p"  joint="LHip_pitch"  class="drs_0101" />
+    <position name="LKnee_pitch_p" joint="LKnee_pitch" class="drs_0101" />
+    <position name="LAnkle_pitch_p" joint="LAnkle_pitch" class="drs_0101" />
+    <position name="LAnkle_roll_p" joint="LAnkle_roll" class="drs_0101" />
+    <position name="core_p"        joint="core"        class="drs_0101" />
+    <position name="RShoulder_pitch_p" joint="RShoulder_pitch" class="drs_0101" />
+    <position name="RShoulder_roll_p"  joint="RShoulder_roll"  class="drs_0101" />
+    <position name="RElbow_pitch_p"    joint="RElbow_pitch"    class="drs_0101" />
+    <position name="LShoulder_pitch_p" joint="LShoulder_pitch" class="drs_0101" />
+    <position name="LShoulder_roll_p"  joint="LShoulder_roll"  class="drs_0101" />
+    <position name="LElbow_pitch_p"    joint="LElbow_pitch"    class="drs_0101" />
+  </actuator>
+</mujoco>

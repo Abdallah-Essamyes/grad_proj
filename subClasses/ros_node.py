@@ -1,41 +1,9 @@
 from PyQt6.QtCore import pyqtSignal, QObject
 from rclpy.node import Node
-from std_msgs.msg import Int16MultiArray
+from std_msgs.msg import Int16MultiArray, Float32MultiArray
 from rclpy.publisher import Publisher
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
-
-_BE_QOS = QoSProfile(
-    reliability=ReliabilityPolicy.BEST_EFFORT,
-    history=HistoryPolicy.KEEP_LAST,
-    depth=1
-)
-_RELIABLE_QOS = QoSProfile(
-    reliability=ReliabilityPolicy.RELIABLE,
-    history=HistoryPolicy.KEEP_LAST,
-    depth=10
-)
-servo_legs_sub_topic      = "/legs_feedback"
-servo_legs_pub_topic      = "/legs_command"
-Legs                      = "Legs"
-servo_upperbody_sub_topic = "/upperbody_feedback"
-servo_upperbody_pub_topic = "/upperbody_command"
-Upperbody                 = "Upperbody"
-status_command_topic        = "/status_command"
-status_response_topic       = "/status_response"
-
-# Index protocol constants (PC -> STM via status_command, data[0])
-CMD_REQUEST_STATUS = 0   # request status array
-CMD_TORQUE_SET     = 2   # torque change  (data[1]: 1=ON, 0=OFF)
-CMD_REQUEST_TORQUE = 3   # request torque status array
-CMD_RESET_ERROR    = 6   # reset error
-CMD_REINITIALIZE   = 7   # reinitialize all servos (reboot + clearError + ACK + torqueON)
-CMD_MOVE_ONE       = 8   # move single Herkulex servo: data[1]=servo_id, data[2]=angle(deg), data[3]=play_time(ms)
-
-# Index protocol constants (STM -> PC via status_response, data[0])
-RESP_STATUS_ARRAY  = 1   # status array  (data[1..40] = 20x[statusError, statusDetail])
-RESP_TORQUE_ARRAY  = 5   # torque array  (data[1..20] = 20x torque byte)
-
-STATUS_ARRAY_SIZE    = 41  # index byte + up to 40 data bytes
+from settings.settings import *
 
 
 class ServoControlROSNode(Node, QObject):
@@ -51,22 +19,25 @@ class ServoControlROSNode(Node, QObject):
         self._dynamic_publishers: dict[str, Publisher] = {}
 
         self.legs_sub = self.create_subscription(
-            Int16MultiArray, servo_legs_sub_topic, self.legs_callback, _BE_QOS)
+            LEGS_MSG_TYPE, LEGS_SUB_TOPIC, self.legs_callback, LEGS_SUB_QOS)
         self.legs_pub = self.create_publisher(
-            Int16MultiArray, servo_legs_pub_topic, _RELIABLE_QOS)
+            LEGS_MSG_TYPE, LEGS_PUB_TOPIC, LEGS_PUB_QOS)
 
         self.upperbody_sub = self.create_subscription(
-            Int16MultiArray, servo_upperbody_sub_topic, self.upperbody_callback, _BE_QOS)
+            UPPERBODY_MSG_TYPE, UPPERBODY_SUB_TOPIC, self.upperbody_callback, UPPERBODY_SUB_QOS)
         self.upperbody_pub = self.create_publisher(
-            Int16MultiArray, servo_upperbody_pub_topic, _BE_QOS)
+            UPPERBODY_MSG_TYPE, UPPERBODY_PUB_TOPIC, UPPERBODY_PUB_QOS)
+
+        self.collision_verification_pub = self.create_publisher(
+            COLLISION_VALIDATION_MSG_TYPE, COLLISION_VALIDATION_TOPIC, COLLISION_VALIDATION_PUB_QOS)
 
         # Unified command publisher (PC -> STM)
         self.status_pub = self.create_publisher(
-            Int16MultiArray, status_command_topic, _RELIABLE_QOS)
+            STATUS_MSG_TYPE, STATUS_COMMAND_TOPIC, STATUS_PUB_QOS)
 
         # Unified response subscriber (STM -> PC)
         self.status_sub = self.create_subscription(
-            Int16MultiArray, status_response_topic, self.status_response_callback, _BE_QOS)
+            STATUS_MSG_TYPE, STATUS_RESPONSE_TOPIC, self.status_response_callback, STATUS_SUB_QOS)
 
     # Publishers
     def publish_generic(self, topic_name: str, data_type: type, msg) -> None:
@@ -80,13 +51,20 @@ class ServoControlROSNode(Node, QObject):
             self._dynamic_publishers[topic_name].publish(msg)
         except Exception as e:
             print(f"Failed to publish to {topic_name}: {e}")
+    
+    def publish_collision_verification(self, angles: list):
+        msg = Float32MultiArray()
+        msg.data = [float(a) for a in angles]
+        self.collision_verification_pub.publish(msg)
 
-    def publish_legs_angles(self, num: list[int]):
-        msg = Int16MultiArray(); msg.data = num
+    def publish_legs_angles(self, num: list):
+        msg = Float32MultiArray()
+        msg.data = [float(a) for a in num]
         self.legs_pub.publish(msg)
 
-    def publish_upperbody_angles(self, num: list[int]):
-        msg = Int16MultiArray(); msg.data = num
+    def publish_upperbody_angles(self, num: list):
+        msg = Float32MultiArray()
+        msg.data = [float(a) for a in num]
         self.upperbody_pub.publish(msg)
 
     def _send_status_command(self, data: list[int]):
@@ -122,10 +100,10 @@ class ServoControlROSNode(Node, QObject):
 
     # Subscribers
     def legs_callback(self, msg: Int16MultiArray):
-        self.angles_callback_signal.emit(Legs, list(msg.data))
+        self.angles_callback_signal.emit(LEGS, list(msg.data))
 
     def upperbody_callback(self, msg: Int16MultiArray):
-        self.angles_callback_signal.emit(Upperbody, list(msg.data))
+        self.angles_callback_signal.emit(UPPERBODY, list(msg.data))
 
     def status_response_callback(self, msg: Int16MultiArray):
         if not msg.data:

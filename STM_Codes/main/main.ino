@@ -36,19 +36,23 @@ rcl_publisher_t debug_publisher;
 
 // -------------------Timer objects -------------------
 rcl_timer_t color_timer;
+rcl_timer_t collision_warn_timer;
 
 //Subscriber messages
-std_msgs__msg__Int16MultiArray legs_command;
-std_msgs__msg__Int16MultiArray upperbody_command;
-std_msgs__msg__Int16MultiArray status_command;
-std_msgs__msg__Int16MultiArray gripper_command;
-std_msgs__msg__Int16MultiArray color_command;
+std_msgs__msg__Float32MultiArray legs_command;
+std_msgs__msg__Float32MultiArray upperbody_command;
+std_msgs__msg__Int16MultiArray   status_command;
+std_msgs__msg__Int16MultiArray   gripper_command;
+std_msgs__msg__Int16MultiArray   color_command;
 
 //Publisher messages
-std_msgs__msg__Int16MultiArray legs_feedback;
-std_msgs__msg__Int16MultiArray upperbody_feedback;
-std_msgs__msg__Int16MultiArray status_response;
-std_msgs__msg__Int16MultiArray color_feedback;
+std_msgs__msg__Float32MultiArray legs_feedback;
+std_msgs__msg__Float32MultiArray upperbody_feedback;
+std_msgs__msg__Int16MultiArray   status_response;
+std_msgs__msg__Int16MultiArray   color_feedback;
+
+// Collision detection flag — set by CMD_COLLISION_DETECTION_FLAG from PC
+bool collision_detection_flag = false;
 
 // Debug string message — reused for all log publishes
 std_msgs__msg__String debug_msg;
@@ -81,6 +85,14 @@ void error_loop(){
   }
 }
 
+// ----- Collision warning timer callback (5 Hz = 200 ms) -----
+void collision_warn_callback(rcl_timer_t * timer, int64_t last_call_time){
+  (void)last_call_time;
+  if(collision_detection_flag){
+    debug_log("COLLISION_DETECTION");
+  }
+}
+
 // --------------------- Subsribers Callback Functions ---------------------
 void legs_cmd_callback(const void * msgin){
   // Queue all 12 leg servos then fire simultaneously with actionAll
@@ -88,8 +100,8 @@ void legs_cmd_callback(const void * msgin){
   for(; i<NUM_LEGS;i++){
     Herkulex.moveAllAngle(leg_motor_indecies[i], legs_command.data.data[i], LED_BLUE);
   }
-  //always take last index as playtime
-  Herkulex.actionAll(legs_command.data.data[i]);  // 500ms execution time — reduce if hardware allows
+  //always take last index as playtime (float -> int cast)
+  Herkulex.actionAll((int)legs_command.data.data[i]);  // 500ms execution time — reduce if hardware allows
 }
 
 void upperbody_cmd_callback(const void * msgin){
@@ -98,15 +110,13 @@ void upperbody_cmd_callback(const void * msgin){
   for(; i<NUM_UPPDERBODY; i++){
     Herkulex.moveAllAngle(upper_motor_indecies[i], upperbody_command.data.data[i], LED_BLUE);
   }
-  // i == NUM_UPPDERBODY (7) — next 4 values are standard servo angles (-150..+150 → 0..180)
+  // i == NUM_UPPDERBODY (7) — next 4 values are standard servo angles (float, constrained to 0..180)
   for(int j = 0; j < NUM_STD_SERVOS; j++){
-    int angle = (int)upperbody_command.data.data[i + j];
-
-    int servo_pos = constrain(angle, 0, 180);
+    int servo_pos = constrain((int)upperbody_command.data.data[i + j], 0, 180);
     std_servo[j].write(servo_pos);
   }
-  // last element (data[11]) is playtime for Herkulex actionAll
-  Herkulex.actionAll(upperbody_command.data.data[i + NUM_STD_SERVOS]);
+  // last element (data[11]) is playtime for Herkulex actionAll (float -> int cast)
+  Herkulex.actionAll((int)upperbody_command.data.data[i + NUM_STD_SERVOS]);
 }
 
 void status_cmd_callback(const void * msgin){
@@ -122,6 +132,7 @@ void status_cmd_callback(const void * msgin){
     case CMD_RESET_ERROR:    action_str = "reset error";            break;
     case CMD_REINITIALIZE:   action_str = "reinitialize servos";    break;
     case CMD_MOVE_ONE:       action_str = "move one servo";         break;
+    case COLLISION_DETECTION_FLAG: action_str = "collision flag";  break;
   }
   snprintf(log_buf, sizeof(log_buf), "[NUBI] received index %d -> %s", (int)idx, action_str);
   debug_log(log_buf);
@@ -215,13 +226,21 @@ void status_cmd_callback(const void * msgin){
     Herkulex.torqueON(BROADCAST_ID);
     debug_log("[NUBI] reinitialize complete");
   }
+  else if(idx == COLLISION_DETECTION_FLAG){
+    collision_detection_flag = (status_command.data.data[1] == 1);
+    if(collision_detection_flag){
+      debug_log("[NUBI] collision_detection_flag SET");
+    } else {
+      debug_log("[NUBI] collision_detection_flag CLEARED");
+    }
+  }
 }
 
 
 
 // --------------------- Subsribers Setup Functions ---------------------
 void leg_cmd_sub_setup(){
-  static int16_t memory_buffer[13]; 
+  static float memory_buffer[13]; 
   legs_command.data.capacity = 13;
   legs_command.data.data = memory_buffer;
   legs_command.data.size = 0;
@@ -229,7 +248,7 @@ void leg_cmd_sub_setup(){
   RCCHECK(rclc_subscription_init_default(
     &leg_command_subscriber,
     &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int16MultiArray),
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
     "legs_command"));
   
   RCCHECK(rclc_executor_add_subscription(&executor, &leg_command_subscriber, &legs_command, &legs_cmd_callback, ON_NEW_DATA));
@@ -237,7 +256,7 @@ void leg_cmd_sub_setup(){
 
 void upperbody_cmd_sub_setup(){
   // 7 Herkulex + 4 std servo + 1 playtime = 12
-  static int16_t memory_buffer1[12]; 
+  static float memory_buffer1[12]; 
   upperbody_command.data.capacity = 12;
   upperbody_command.data.data = memory_buffer1;
   upperbody_command.data.size = 0;
@@ -245,7 +264,7 @@ void upperbody_cmd_sub_setup(){
   RCCHECK(rclc_subscription_init_best_effort(
     &upperbody_command_subscriber,
     &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int16MultiArray),
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
     "upperbody_command"));
   
   RCCHECK(rclc_executor_add_subscription(&executor, &upperbody_command_subscriber, &upperbody_command, &upperbody_cmd_callback, ON_NEW_DATA));
@@ -298,17 +317,17 @@ void setup() {
   // We need space for 12 integers
 
   // Create a static buffer to hold the data you want to send
-  // Initialised to 1004 (the "no power" sentinel) so the GUI shows "--" for every
+  // Initialised to 1004.0f (the "no power" sentinel) so the GUI shows "--" for every
   // servo slot until a real reading arrives. See plans/no-power-sentinel-init.md
-  static int16_t feedback_buffer[12];
-  for(int i = 0; i < 12; i++) feedback_buffer[i] = 1004;
+  static float feedback_buffer[12];
+  for(int i = 0; i < 12; i++) feedback_buffer[i] = 1004.0f;
   // Link the buffer to the message struct
   legs_feedback.data.capacity = 12;
   legs_feedback.data.data = feedback_buffer;
   legs_feedback.data.size = 12; // IMPORTANT: Tell ROS how many items you are sending
 
-  static int16_t feedback_buffer1[7];
-  for(int i = 0; i < 7; i++) feedback_buffer1[i] = 1004;
+  static float feedback_buffer1[7];
+  for(int i = 0; i < 7; i++) feedback_buffer1[i] = 1004.0f;
   // Link the buffer to the message struct
   upperbody_feedback.data.capacity = 7;
   upperbody_feedback.data.data = feedback_buffer1;
@@ -324,13 +343,13 @@ void setup() {
   RCCHECK(rclc_publisher_init_best_effort(
     &leg_pos_feedback_publisher,
     &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int16MultiArray),
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
     "legs_feedback"));
 
   RCCHECK(rclc_publisher_init_best_effort(
     &upperbody_pos_feedback_publisher,
     &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int16MultiArray),
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
     "upperbody_feedback"));
 
   rclc_publisher_init_best_effort(
@@ -345,10 +364,14 @@ void setup() {
     ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
     "nubi_debug");
 
-  RCSOFTCHECK(rclc_executor_init(&executor, &support.context, 3, &allocator));  
+  RCSOFTCHECK(rclc_executor_init(&executor, &support.context, 4, &allocator));  
   leg_cmd_sub_setup();        //1
   upperbody_cmd_sub_setup();  //2
   status_cmd_sub_setup();     //3
+
+  // 5 Hz collision warning timer (200 ms) — logs "COLLISION_DETECTION" to /nubi_debug when flag is set
+  RCCHECK(rclc_timer_init_default(&collision_warn_timer, &support, RCL_MS_TO_NS(200), collision_warn_callback));
+  RCCHECK(rclc_executor_add_timer(&executor, &collision_warn_timer)); //4
 
   // Attach standard servos AFTER micro-ROS init to avoid TIM1 conflict
   for(int j = 0; j < NUM_STD_SERVOS; j++){
@@ -386,11 +409,11 @@ void loop() {
     unsigned long t0 = micros();
     float leg_angle = Herkulex.getAngle(leg_motor_indecies[leg_feedback_index]);
     if (leg_angle < 900.0f) {
-      // Valid reading — update buffer
-      legs_feedback.data.data[leg_feedback_index] = (int16_t)leg_angle;
+      // Valid reading — store float directly
+      legs_feedback.data.data[leg_feedback_index] = leg_angle;
     } else if (leg_angle >= 1002.0f) {
-      // Timeout sentinel (1004) — servo unpowered/disconnected, propagate so GUI shows "--"
-      legs_feedback.data.data[leg_feedback_index] = 1004;
+      // Timeout sentinel (1004.0f) — servo unpowered/disconnected, propagate so GUI shows "--"
+      legs_feedback.data.data[leg_feedback_index] = 1004.0f;
     }
     // 999 (checksum noise) falls through: buffer keeps its last good value silently
     unsigned long el = micros() - t0;
@@ -409,11 +432,11 @@ void loop() {
     unsigned long t0 = micros();
     float upper_angle = Herkulex.getAngle(upper_motor_indecies[upper_feedback_index]);
     if (upper_angle < 900.0f) {
-      // Valid reading — update buffer
-      upperbody_feedback.data.data[upper_feedback_index] = (int16_t)upper_angle;
+      // Valid reading — store float directly
+      upperbody_feedback.data.data[upper_feedback_index] = upper_angle;
     } else if (upper_angle >= 1002.0f) {
-      // Timeout sentinel (1004) — servo unpowered/disconnected, propagate so GUI shows "--"
-      upperbody_feedback.data.data[upper_feedback_index] = 1004;
+      // Timeout sentinel (1004.0f) — servo unpowered/disconnected, propagate so GUI shows "--"
+      upperbody_feedback.data.data[upper_feedback_index] = 1004.0f;
     }
     // 999 (checksum noise) falls through: buffer keeps its last good value silently
     unsigned long el = micros() - t0;

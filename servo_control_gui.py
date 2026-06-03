@@ -1,6 +1,4 @@
-from subClasses.ros_node import (ServoControlROSNode,
-                                  servo_legs_pub_topic, servo_upperbody_pub_topic,
-                                  Legs, Upperbody)
+from subClasses.ros_node import ServoControlROSNode
 from Widgets.servo_widget import servo_control_subWidget
 from Widgets.torque_widget import torque_control_subWidget
 from Widgets.SidebarPanel import SidebarPanel
@@ -16,26 +14,26 @@ import threading
 import time
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Int32,Int16MultiArray
+from std_msgs.msg import Int32, Int16MultiArray, Float32MultiArray
 from pathlib import Path
 from subClasses.Command_Array import *
 from subClasses.Servo_Pair import Servo_Pair
-from subClasses.constants import *
+from settings.settings import *
 #the id of the servos in this list should be at its respective
 #index in the low level handling
 #put the required hotkey as well
 #add positions for the subwidgets in the return_servo_subWidgets_positions function in servo_subclasses.py
-command_array(name = Legs,
+command_array(name = LEGS,
               ids_array= [16, 6 , 7 , 8, 10 , 9, 17,  11, 12, 13, 15, 14],
               hotkey_array = ['q','w','e','r','t','y','u','i','o','p','[',']'],
-              pub_topic=servo_legs_pub_topic,
-              pub_type=Int16MultiArray)
+              pub_topic=LEGS_PUB_TOPIC,
+              pub_type=LEGS_MSG_TYPE)
 
-command_array(name = Upperbody,
+command_array(name = UPPERBODY,
               ids_array = [0, 1, 2, 3, 4, 18, 19, 101, 102, 103, 104],
               hotkey_array = ['a','s','d','f','g','h','j','k','l',';',"'"],
-              pub_topic=servo_upperbody_pub_topic,
-              pub_type=Int16MultiArray)
+              pub_topic=UPPERBODY_PUB_TOPIC,
+              pub_type=UPPERBODY_MSG_TYPE)
 
 
 all_commands_dict = command_array.all_commands_dict
@@ -59,6 +57,7 @@ class servoGUI(QWidget):
         self.ros_node = ServoControlROSNode()
         # step increment for servo changes (0-90)
         self.step = 10
+        self.safety = True #kept here to keep og logic, not integrated in gui dou, always assume safety is on
         # torque verification polling state
         self._torque_verify_count = 0
         self._torque_response_count = 0      # responses received during this verification round
@@ -121,6 +120,92 @@ class servoGUI(QWidget):
         # Steal focus from any spinbox/textbox so hotkeys work immediately
         self.setFocus()
         super().mousePressEvent(event)
+
+
+    #sign is 1 or -1
+    def update_servo_position(self,servo_widget:servo_control_subWidget,sign:int):
+        try:
+            all_commands_dict[servo_widget.name]
+        except Exception:
+            print(f"Servo widget {servo_widget.id} has no valid command name; cannot publish")
+            return
+
+        # Herkulex servos: only this widget's angle is needed — skip the full-array read
+        # (other widgets may be None/"N" and would cause int() failures)
+        
+        current = servo_widget.angle  # None if unpowered/unread
+        if current is None:
+            print(f"Error update_servo_position: servo widget {servo_widget.id}, check that the angles are being read and are not None")
+            return
+            
+        new_servo_angle = current + sign * getattr(self, 'step', 1)
+        
+        # 1. Clamp the angle based on servo type
+        if servo_widget.id in STD_SERVO_IDS:
+            new_servo_angle = max(180-STD_SERVO_ANGLE_LIMIT, min(STD_SERVO_ANGLE_LIMIT, new_servo_angle))            
+            
+        else:
+            new_servo_angle = max(-HS_SERVO_ANGLE_LIMIT, min(HS_SERVO_ANGLE_LIMIT, new_servo_angle))
+
+        action_time = getattr(self, 'action_time', 500)
+        
+        # 2. Check if this servo is part of a motion pair
+        matched_pair = None
+        for pair in STD_SERVO_MOTION_PAIRS:
+            if servo_widget.id in pair.get_ids():
+                matched_pair = pair
+                break  # Stop looking once we find the matching pair
+                
+        # 3. Execute the movement (Mirrored vs Single)
+        if matched_pair:
+            # Calculate the mirrored angles using your dataclass logic
+            is_safe = matched_pair.set_angle(servo_widget.id, new_servo_angle)
+            
+            if is_safe:
+                # Move Left Servo
+                self.ros_node.move_one_servo(
+                    matched_pair.servo_left_id,
+                    matched_pair.servo_left_angle,
+                    action_time
+                )
+                # Move Right Servo
+                self.ros_node.move_one_servo(
+                    matched_pair.servo_right_id,
+                    matched_pair.servo_right_angle,
+                    action_time
+                )
+                self.servo_control_subWidgets_dict[matched_pair.servo_left_id].set_angle(matched_pair.servo_left_angle)
+                self.servo_control_subWidgets_dict[matched_pair.servo_right_id].set_angle(matched_pair.servo_right_angle)
+            else:
+                # Math hit the min/max angle limits defined in Servo_Pair
+                print(f"Safety limits exceeded for pair: {matched_pair.get_ids()}")
+                
+        else:
+            # Not in a pair, move normally
+            if servo_widget.id in STD_SERVO_IDS:
+                servo_widget.set_angle(new_servo_angle)
+
+            
+            else:
+                if self.safety:                    
+                    all_angles = self.get_mujoco_safety_ordered_angles()
+                    all_angles[MUJOCO_SAFETY_ID_ORDER.index(servo_widget.id)] = new_servo_angle
+                    # Append current STD servo angles (101,102,103,104) so collisions.py
+                    # can pass them through to the upperbody command unchanged.
+                    # STD servos have no mujoco geometry so they are NOT used in collision checking.
+                    for sid in STD_SERVO_IDS:
+                        w = self.servo_control_subWidgets_dict.get(sid)
+                        all_angles.append(float(w.angle) if w and w.angle is not None else 90.0)
+                    all_angles.append(action_time)
+                    self.ros_node.publish_collision_verification(all_angles)
+                else:    
+                    self.ros_node.move_one_servo(
+                        servo_widget.id,
+                        new_servo_angle,
+                        action_time
+                        )
+        print(f"move_one_servo {'HS_Servo' if servo_widget.id not in STD_SERVO_IDS else 'STD_Servo'} id={servo_widget.id} angle={new_servo_angle}")
+        return
 
     def eventFilter(self, obj, event):
         # +/- step adjustment from anywhere in the app
@@ -242,6 +327,35 @@ class servoGUI(QWidget):
                 break
             self.servo_control_subWidgets_dict[id].set_angle(angles_list[i])
 
+
+    def get_all_legs_angles(self):
+        try:
+            return [int(self.servo_control_subWidgets_dict[id].get_angle()) for id in all_commands_dict[LEGS].ids_array]
+        except ValueError as e:
+            print(f"Error getting legs angles: {e}, check that the angles are being read and are not None")
+            return False
+
+    def get_all_upperbody_angles(self):
+        try:
+            return [int(self.servo_control_subWidgets_dict[id].get_angle()) for id in all_commands_dict[UPPERBODY].ids_array]
+        except ValueError as e:
+            print(f"Error getting upperbody angles: {e}, check that the angles are being read and are not None")
+            return False
+        
+    def get_mujoco_safety_ordered_angles(self):
+        try:
+            return [float(self.servo_control_subWidgets_dict[id].get_angle()) for id in MUJOCO_SAFETY_ID_ORDER]
+        except ValueError as e:
+            print(f"Error getting Mujoco safety ordered angles: {e}, check that the angles are being read and are not None")
+            return False
+
+    def get_all_servo_angles_in_same_command_array(self,command_array:command_array):
+        try:
+            return [int(self.servo_control_subWidgets_dict[id].get_angle()) for id in command_array.ids_array]
+        except ValueError as e:
+            print(f"Error getting {command_array.name} angles: {e}, check that the angles are being read and are not None")
+            return False
+
     def _torque_verify_tick(self):
         """Poll torque status once per second, up to 5 times after a torque toggle."""
         if self._torque_verify_count <= 0:
@@ -278,27 +392,6 @@ class servoGUI(QWidget):
         pass
 
     
-
-    def get_all_legs_angles(self):
-        try:
-            return [int(self.servo_control_subWidgets_dict[id].get_angle()) for id in all_commands_dict[Legs].ids_array]
-        except ValueError as e:
-            print(f"Error getting legs angles: {e}, check that the angles are being read and are not None")
-            return False
-
-    def get_all_upperbody_angles(self):
-        try:
-            return [int(self.servo_control_subWidgets_dict[id].get_angle()) for id in all_commands_dict[Upperbody].ids_array]
-        except ValueError as e:
-            print(f"Error getting upperbody angles: {e}, check that the angles are being read and are not None")
-            return False
-
-    def get_all_servo_angles_in_same_command_array(self,command_array:command_array):
-        try:
-            return [int(self.servo_control_subWidgets_dict[id].get_angle()) for id in command_array.ids_array]
-        except ValueError as e:
-            print(f"Error getting {command_array.name} angles: {e}, check that the angles are being read and are not None")
-            return False
 
     def _send_torque(self, new_state: bool):
         self.torque_lock_widget.turn_blue()   # visual feedback: request sent
@@ -382,74 +475,6 @@ class servoGUI(QWidget):
 
         save_servo_positions(self._x_shifts, self._y_values)
 
-    #sign is 1 or -1
-    def update_servo_position(self,servo_widget:servo_control_subWidget,sign:int):
-        try:
-            all_commands_dict[servo_widget.name]
-        except Exception:
-            print(f"Servo widget {servo_widget.id} has no valid command name; cannot publish")
-            return
-
-        # Herkulex servos: only this widget's angle is needed — skip the full-array read
-        # (other widgets may be None/"N" and would cause int() failures)
-        
-        current = servo_widget.angle  # None if unpowered/unread
-        if current is None:
-            print(f"Error update_servo_position: servo widget {servo_widget.id}, check that the angles are being read and are not None")
-            return
-            
-        new_servo_angle = current + sign * getattr(self, 'step', 1)
-        
-        # 1. Clamp the angle based on servo type
-        if servo_widget.id in STD_SERVO_IDS:
-            new_servo_angle = max(180-STD_SERVO_ANGLE_LIMIT, min(STD_SERVO_ANGLE_LIMIT, new_servo_angle))            
-            
-        else:
-            new_servo_angle = max(-HS_SERVO_ANGLE_LIMIT, min(HS_SERVO_ANGLE_LIMIT, new_servo_angle))
-
-        action_time = getattr(self, 'action_time', 500)
-        
-        # 2. Check if this servo is part of a motion pair
-        matched_pair = None
-        for pair in STD_SERVO_MOTION_PAIRS:
-            if servo_widget.id in pair.get_ids():
-                matched_pair = pair
-                break  # Stop looking once we find the matching pair
-                
-        # 3. Execute the movement (Mirrored vs Single)
-        if matched_pair:
-            # Calculate the mirrored angles using your dataclass logic
-            is_safe = matched_pair.set_angle(servo_widget.id, new_servo_angle)
-            
-            if is_safe:
-                # Move Left Servo
-                self.ros_node.move_one_servo(
-                    matched_pair.servo_left_id,
-                    matched_pair.servo_left_angle,
-                    action_time
-                )
-                # Move Right Servo
-                self.ros_node.move_one_servo(
-                    matched_pair.servo_right_id,
-                    matched_pair.servo_right_angle,
-                    action_time
-                )
-                self.servo_control_subWidgets_dict[matched_pair.servo_left_id].set_angle(matched_pair.servo_left_angle)
-                self.servo_control_subWidgets_dict[matched_pair.servo_right_id].set_angle(matched_pair.servo_right_angle)
-            else:
-                # Math hit the min/max angle limits defined in Servo_Pair
-                print(f"Safety limits exceeded for pair: {matched_pair.get_ids()}")
-                
-        else:
-            # Not in a pair, move normally
-            servo_widget.set_angle(new_servo_angle)
-            self.ros_node.move_one_servo(
-                servo_widget.id,
-                new_servo_angle,
-                action_time
-            )
-        print(f"move_one_servo {'HS_Servo' if servo_widget.id not in STD_SERVO_IDS else 'STD_Servo'} id={servo_widget.id} angle={new_servo_angle}")
-        return
 
 
 if __name__ == "__main__":

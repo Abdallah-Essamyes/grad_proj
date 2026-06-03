@@ -7,11 +7,10 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QIcon
-    
 from Ops_Widgets.json_commands_widget import JsonCommandsWidget
 from Ops_Widgets.terminal_grid_widget import TerminalGridWidget
 from Ops_Widgets.actions_control_widget import ActionsControlWidget
-
+from Ops_Widgets.collisions_widget import CollisionsWidget
 
 class RobotOpsGUI(QMainWindow):
     """
@@ -30,12 +29,12 @@ class RobotOpsGUI(QMainWindow):
         self.setWindowTitle("NUBI - Robot Operations")
         icon_path = Path(__file__).resolve().parent / "documents" / "ops_icon_white.png"
         self.setWindowIcon(QIcon(str(icon_path)))
-        self.resize(1200, 800)
+        self.resize(1500, 800)
 
         self._commands_widget = JsonCommandsWidget()
         self._terminal_widget = TerminalGridWidget()
         self._actions_widget = ActionsControlWidget()
-
+        self._collisions_widget = CollisionsWidget()
         # Connect: when commands are launched, pass them to the terminal grid
         self._commands_widget.launch_commands.connect(self._terminal_widget.launch)
 
@@ -59,10 +58,12 @@ class RobotOpsGUI(QMainWindow):
         self._actions_widget.setMinimumWidth(200)
         self._actions_widget.setMaximumWidth(320)
         h_splitter.addWidget(self._actions_widget)
+        h_splitter.addWidget(self._collisions_widget)
         h_splitter.addWidget(right_panel)
         h_splitter.setStretchFactor(0, 0)
         h_splitter.setStretchFactor(1, 1)
-        h_splitter.setSizes([240, 960])
+        h_splitter.setStretchFactor(2, 2)
+        h_splitter.setSizes([240, 400, 860])
 
         container = QWidget()
         layout = QVBoxLayout(container)
