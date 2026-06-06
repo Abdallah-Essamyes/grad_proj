@@ -1,8 +1,12 @@
+#include <Arduino.h>
 #include <micro_ros_arduino.h>
 #include "Herkulex.h"
 #include <Servo.h>
 #include <string.h>
 #include "constants.h"
+// Round-robin feedback indices — one per bus, independent of body grouping
+int h1_feedback_index = 0;
+int h2_feedback_index = 0;
 #include "ros_interface.h"
 
 // Single ROS interface instance — owns all micro-ROS objects and callbacks.
@@ -22,11 +26,6 @@ void setup() {
 
     // Initialise all ROS subscribers, publishers, timers, and the executor.
     ros.setup();
-
-    // Attach standard servos AFTER micro-ROS init to avoid TIM1 conflict.
-    for (int j = 0; j < NUM_STD_SERVOS; j++) {
-        std_servo[j].attach(std_servo_pins[j]);
-    }
 
     // ── Herkulex hardware initialisation ──
     delay(2000);  // wait for serial monitor before first UART traffic

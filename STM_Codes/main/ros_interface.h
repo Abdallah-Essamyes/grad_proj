@@ -45,6 +45,8 @@ public:
     void spin();
 
 private:
+    Servo std_servo[NUM_STD_SERVOS];
+
     // ── Core micro-ROS infrastructure ──
     rclc_executor_t _executor;
     rclc_support_t  _support;

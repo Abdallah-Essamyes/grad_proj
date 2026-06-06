@@ -1202,7 +1202,7 @@ void get2positions(int id1, int id2, float &angle1, float &angle2)
   int tc = 0;
   while (tc < TIME_OUT) {
     if (Serial1.available() >= 13 && Serial2.available() >= 13) break;
-    delayMicroseconds(1000);
+    delayMicroseconds(500);
     tc++;
   }
   // If one port timed out but not the other, we still attempt to read both;

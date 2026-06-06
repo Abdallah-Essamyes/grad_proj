@@ -1,6 +1,18 @@
 #include "ros_interface.h"
 #include "Herkulex.h"
 
+// ── Error helper + RCL macros (only needed inside this translation unit) ──
+static void error_loop() {
+    for (int i = 0; i < 5; i++) {
+        digitalWrite(PC13, LOW);  delay(150);
+        digitalWrite(PC13, HIGH); delay(150);
+    }
+    delay(500);
+    NVIC_SystemReset();
+}
+#define RCCHECK(fn)     { rcl_ret_t temp_rc = fn; if (temp_rc != RCL_RET_OK) { error_loop(); } }
+#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; (void)temp_rc; }
+
 // Static instance pointer — assigned in main.ino before ros.setup() is called.
 RosInterface* RosInterface::instance = nullptr;
 
@@ -27,6 +39,11 @@ void RosInterface::setup() {
     _allocator = rcl_get_default_allocator();
     RCCHECK(rclc_support_init(&_support, 0, NULL, &_allocator));
     RCCHECK(rclc_node_init_default(&_node, "NUBI_STM_NODE", "", &_support));
+
+    // Attach standard servos AFTER micro-ROS init to avoid TIM1 conflict.
+    for (int j = 0; j < NUM_STD_SERVOS; j++) {
+        std_servo[j].attach(std_servo_pins[j]);
+    }
 
     // ── Feedback buffer initialisation (1004.0 = "no power" sentinel) ──
     for (int i = 0; i < 12; i++) _leg_fb_buf[i]       = 1004.0f;
