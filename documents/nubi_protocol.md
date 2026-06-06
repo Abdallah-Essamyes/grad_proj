@@ -21,6 +21,18 @@
   |1 |   Status array|   data[1..40] = 20 x [statusError, statusDetail] <br> data[1]  = servo 0 statusError <br>data[2]  = servo 0 statusDetail <br>data[3]  = servo 1 statusError <br>data[4]  = servo 1 statusDetail <br> (2 bytes per servo, 20 servos = 40 bytes)|
 |  5 |   Torque array|data[1..20] = 20 x torque byte <br> data[1]  = servo 0 (1=ON, 0=OFF) <br> data[2]  = servo 1 <br> (1 byte per servo, 20 servos = 20 bytes)|
 
+
+## Sentinel Values
+|Value |	Raw register value|	Meaning|
+|-----|  -------|  -------|
+|< 900.0|	any valid reading|	Valid angle in degrees| 
+|= 999.0	|raw = 3586 → (3586-512)×0.325 = 999.05	|Checksum error — bytes arrived but were corrupted (electrical noise)|
+|≥ 1002.0 / 1004.0 |raw = 3588 → (3588-512)×0.325 = 1004.7	|Timeout — no response at all, servo is unpowered or disconnected|
+
+angle < 900   → real reading → store it  
+angle = 999   → noise/glitch → silently ignore (don't overwrite last good value)  
+angle ≥ 1002  → servo dead  → store 1004 so GUI shows "--"
+
 ## Notes
 
 - All arrays are padded with zeros to STATUS_ARRAY_SIZE = 41
@@ -31,3 +43,5 @@
   (index 3 sent once per second for 5 seconds) to verify the change
 - Status and torque data are on-demand only; there are no periodic timers
   publishing them autonomously on the STM
+
+

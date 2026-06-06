@@ -87,7 +87,10 @@ static byte BROADCAST_ID = 0xFE;
 
 class HerkulexClass {
 public:
-  void  begin(long baud, int rx, int tx);
+  HerkulexClass() : _serial(&Serial1) {}   // default: Serial1
+
+  void  begin(long baud, int rx, int tx);                          // Serial1 (backward compat)
+  void  begin(long baud, HardwareSerial& ser, int rx, int tx);    // any UART
   void  beginSerial1(long baud);
   void  beginSerial2(long baud);
   void  beginSerial3(long baud);
@@ -135,7 +138,7 @@ private:
   void clearBuffer();
   void printHexByte(byte x);
 
-  int port;
+  HardwareSerial* _serial;   // which UART this instance owns
   
   // Set by readData(): true if the read timed out (servo did not respond = unpowered/disconnected),
   // false if bytes were received (servo responded, even if checksum failed).
@@ -159,6 +162,13 @@ private:
  
 };
 
-extern HerkulexClass Herkulex;
+extern HerkulexClass Herkulex;   // Serial1 — PA9(TX) / PA10(RX)
+extern HerkulexClass Herkulex2;  // Serial2 — PA2(TX) / PA3(RX)
+
+// Dual-bus position helper:
+// Sends a position-read request on both serial buses simultaneously,
+// waits once for both responses, and returns angles for id1 (bus1) and
+// id2 (bus2).  Replaces two sequential blocking getAngle() calls.
+void get2positions(int id1, int id2, float &angle1, float &angle2);
 
 #endif    // Herkulex_h

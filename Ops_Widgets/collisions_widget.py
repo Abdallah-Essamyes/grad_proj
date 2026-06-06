@@ -15,13 +15,13 @@ from pathlib import Path
 # 1. Resolve the path to the parent directory
 # .parent goes up one level. Add more .parent if you need to go higher.
 try:
-    from subClasses.collisions import LegCommandVerifier, VerifierSignals
+    from subClasses.collisions import CommandVerifier, VerifierSignals
 except ModuleNotFoundError:
     parent_dir = str(Path(__file__).resolve().parent.parent)
     print("ran directly")
     # 2. Add it to Python's system path
     sys.path.append(parent_dir)
-    from subClasses.collisions import LegCommandVerifier, VerifierSignals
+    from subClasses.collisions import CommandVerifier, VerifierSignals
 
 class CollisionsWidget(QWidget):
     def __init__(self):
@@ -29,7 +29,7 @@ class CollisionsWidget(QWidget):
         self.setWindowTitle("ROS 2 Leg Verifier")
         
         # Restore last window position/size
-        self.settings = QSettings("NubiRobotics", "LegCommandVerifier")
+        self.settings = QSettings("NubiRobotics", "CommandVerifier")
         geometry = self.settings.value("geometry")
         if geometry:
             self.restoreGeometry(geometry)
@@ -91,7 +91,7 @@ class CollisionsWidget(QWidget):
         # Init ROS 2 and spin it in a background thread so the GUI doesn't freeze
         if not rclpy.ok():
             rclpy.init()
-        self.ros_node = LegCommandVerifier(signals=self.signals)
+        self.ros_node = CommandVerifier(signals=self.signals)
         self.ros_thread = threading.Thread(target=rclpy.spin, args=(self.ros_node,), daemon=True)
         self.ros_thread.start()
 

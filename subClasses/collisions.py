@@ -62,7 +62,7 @@ def has_self_collision(q: list) -> bool:
 # ─────────────────────────────────────────────────────────────────
 #  ROS 2 node
 # ─────────────────────────────────────────────────────────────────
-class LegCommandVerifier(rclpy.node.Node):
+class CommandVerifier(rclpy.node.Node):
     def __init__(self, signals: VerifierSignals = None):
         super().__init__("command_verifier")
         self.signals = signals
@@ -124,12 +124,22 @@ class LegCommandVerifier(rclpy.node.Node):
     def _legs_feedback_cb(self, msg: Float32MultiArray) -> None:
         with self._feedback_state_lock:
             self._last_legs_angles = list(msg.data)
+
+        #for collision check, all angles must be read
+        if any(v >= 1000 for v in msg.data):  # Sentinel value indicating missing/unpowered servo            
+            #self.get_logger().info("[FEEDBACK] Skipping live collision check — legs feedback contains sentinel value(s)")
+            return
         self.get_logger().info(f"[FEEDBACK] legs ({len(msg.data)} values): {[round(v,2) for v in msg.data]}")
+        
         self._check_live_collision()
 
     def _upper_feedback_cb(self, msg: Float32MultiArray) -> None:
         with self._feedback_state_lock:
             self._last_upper_angles = list(msg.data)
+            #for collision check, all angles must be read
+        if any(v >= 1000 for v in msg.data):  # Sentinel value indicating missing/unpowered servo            
+            #self.get_logger().info("[FEEDBACK] Skipping live collision check — UpperBody feedback contains sentinel value(s)")
+            return
         self.get_logger().info(f"[FEEDBACK] upper ({len(msg.data)} values): {[round(v,2) for v in msg.data]}")
         self._check_live_collision()
 
