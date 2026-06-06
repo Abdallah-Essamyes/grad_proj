@@ -10,12 +10,12 @@ except ModuleNotFoundError:
     sys.path.append(parent_dir)
     from subClasses.Servo_Pair import Servo_Pair
 
-MUJOCO_SAFETY_ID_ORDER = [16,6,7,8,9,10,17,11,12,13,14,15,19,0,1,2,3,4,18]
+MUJOCO_SAFETY_ID_ORDER = [16,6,7,8,9,10,17,18,12,13,14,15,19,0,1,2,3,4,11]
 
 # Servo ID ordering for legs and upper-body commands (mirrors command_array in servo_control_gui)
 # These must match the STM's motor index arrays exactly.
-LEGS_HS_CMD_IDS      = [16, 6, 7, 8, 10, 9, 17, 11, 12, 13, 15, 14]   # 12 Herkulex leg servos
-UPPERBODY_HS_CMD_IDS = [0, 1, 2, 3, 4, 18, 19]                          # 7 Herkulex upper-body servos
+LEGS_HS_CMD_IDS      = [16, 6, 7, 8, 10, 9, 17, 18, 12, 13, 15, 14]   # 12 Herkulex leg servos
+UPPERBODY_HS_CMD_IDS = [0, 1, 2, 3, 4, 11, 19]                          # 7 Herkulex upper-body servos
 
 # Standard (non-Herkulex) servo IDs and their display pin names
 STD_SERVO_IDS = [101, 102, 103, 104]
@@ -43,7 +43,7 @@ RELIABLE_QOS = QoSProfile(
 LEGS_SUB_TOPIC      = "/legs_feedback"
 LEGS_PUB_TOPIC      = "/legs_command"
 LEGS_MSG_TYPE   = Float32MultiArray
-LEGS_PUB_QOS = RELIABLE_QOS
+LEGS_PUB_QOS = RELIABLE_QOS   # RELIABLE: commands must arrive
 LEGS_SUB_QOS = BE_QOS
 COLLISION_VALIDATION_TOPIC = "/collision_verification"
 COLLISION_VALIDATION_MSG_TYPE = Float32MultiArray
@@ -52,13 +52,13 @@ LEGS                      = "Legs"
 UPPERBODY_SUB_TOPIC = "/upperbody_feedback"
 UPPERBODY_PUB_TOPIC = "/upperbody_command"
 UPPERBODY_MSG_TYPE = Float32MultiArray
-UPPERBODY_PUB_QOS = RELIABLE_QOS
+UPPERBODY_PUB_QOS = RELIABLE_QOS   # RELIABLE: commands must arrive
 UPPERBODY_SUB_QOS = BE_QOS
 UPPERBODY                 = "Upperbody"
 STATUS_COMMAND_TOPIC        = "/status_command"
 STATUS_RESPONSE_TOPIC       = "/status_response"
-STATUS_MSG_TYPE           = Int16MultiArray
-STATUS_PUB_QOS = BE_QOS
+STATUS_MSG_TYPE           = Float32MultiArray
+STATUS_PUB_QOS = RELIABLE_QOS  # RELIABLE: commands must arrive
 STATUS_SUB_QOS = BE_QOS
 
 # Index protocol constants (PC -> STM via status_command, data[0])

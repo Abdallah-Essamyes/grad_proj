@@ -50,7 +50,7 @@
 
 #define DATA_SIZE	 30		// buffer for input data
 #define DATA_MOVE  	 50		// max 10 servos <---- change this for more servos!
-#define TIME_OUT     5   	//timeout serial communication
+#define TIME_OUT     10   	//timeout serial communication
 
 // SERVO HERKULEX COMMAND - See Manual p40
 #define HEEPWRITE    0x01 	//Rom write
@@ -64,13 +64,13 @@
 #define HREBOOT	 	 0x09 	//Reboot
 
 // HERKULEX LED - See Manual p29
-static int LED_GREEN =	 0x01;
-static int LED_BLUE  =   0x02;
-static int LED_CYAN  =   0x03;
-static int LED_RED   = 	 0x04;
-static int LED_GREEN2= 	 0x05;
-static int LED_PINK  =   0x06;
-static int LED_WHITE =   0x07;
+static int LED_GREEN1 =	 0x01;
+static int LED_BLUE   =   0x02;
+static int LED_CYAN   =   0x03;
+static int LED_RED    = 	 0x04;
+static int LED_YELLOW = 	 0x05;
+static int LED_PINK   =   0x06;
+static int LED_WHITE  =   0x07;
 
 // HERKULEX STATUS ERROR - See Manual p39
 static byte H_STATUS_OK					= 0x00;
@@ -87,14 +87,18 @@ static byte BROADCAST_ID = 0xFE;
 
 class HerkulexClass {
 public:
-  void  begin(long baud, int rx, int tx);
+  HerkulexClass() : _serial(&Serial1) {}   // default: Serial1
+
+  void  begin(long baud, int rx, int tx);                          // Serial1 (backward compat)
+  void  begin(long baud, HardwareSerial& ser, int rx, int tx);    // any UART
   void  beginSerial1(long baud);
   void  beginSerial2(long baud);
   void  beginSerial3(long baud);
   void  end();
   
   void  initialize();
-  byte  stat(int servoID);
+  //byte  stat(int servoID);
+  byte stat(int servoID, byte &statusError, byte &statusDetail);
   void  ACK(int valueACK);
   byte  model();
   void  set_ID(int ID_Old, int ID_New);
@@ -102,6 +106,7 @@ public:
   
   void  torqueON(int servoID);
   void  torqueOFF(int servoID);
+  byte getTorque(int servoID);
   
   void  moveAll(int servoID, int Goal, int iLed);
   void  moveSpeedAll(int servoID, int Goal, int iLed);
@@ -118,10 +123,12 @@ public:
 		
   void  reboot(int servoID);
   void  setLed(int servoID, int valueLed);
+  byte getLed(int servoID);
  
   void  writeRegistryRAM(int servoID, int address, int writeByte);
   void  writeRegistryEEP(int servoID, int address, int writeByte);
 
+  HardwareSerial& getSerial() { return *_serial; }  // expose the configured UART for get2positions
   
 // private area  
 private:
@@ -133,7 +140,11 @@ private:
   void clearBuffer();
   void printHexByte(byte x);
 
-  int port;
+  HardwareSerial* _serial;   // which UART this instance owns
+  
+  // Set by readData(): true if the read timed out (servo did not respond = unpowered/disconnected),
+  // false if bytes were received (servo responded, even if checksum failed).
+  bool _timed_out;
   
   int pSize;
   int pID;
@@ -153,6 +164,13 @@ private:
  
 };
 
-extern HerkulexClass Herkulex;
+extern HerkulexClass Herkulex;   // Serial1 — PA9(TX) / PA10(RX)
+extern HerkulexClass Herkulex2;  // Serial2 — PA2(TX) / PA3(RX)
+
+// Dual-bus position helper:
+// Sends a position-read request on both serial buses simultaneously,
+// waits once for both responses, and returns angles for id1 (bus1) and
+// id2 (bus2).  Replaces two sequential blocking getAngle() calls.
+void get2positions(int id1, int id2, float &angle1, float &angle2);
 
 #endif    // Herkulex_h

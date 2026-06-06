@@ -70,10 +70,10 @@ private:
     // ── Inbound messages ──
     std_msgs__msg__Float32MultiArray _legs_cmd;
     std_msgs__msg__Float32MultiArray _upperbody_cmd;
-    std_msgs__msg__Int16MultiArray   _status_cmd;
+    std_msgs__msg__Float32MultiArray   _status_cmd;
 
     // ── Outbound messages ──
-    std_msgs__msg__Int16MultiArray   _status_resp;
+    std_msgs__msg__Float32MultiArray   _status_resp;
     std_msgs__msg__String            _debug_msg;
 
     // ── Collision flag — toggled via CMD_COLLISION_DETECTION_FLAG ──
@@ -82,10 +82,10 @@ private:
     // ── Raw memory buffers ──
     float   _leg_cmd_buf[13];
     float   _upperbody_cmd_buf[12];
-    int16_t _status_cmd_buf[STATUS_ARRAY_SIZE];
-    int16_t _status_resp_buf[STATUS_ARRAY_SIZE];
-    float   _leg_fb_buf[12];
-    float   _upperbody_fb_buf[7];
+    float _status_cmd_buf[STATUS_ARRAY_SIZE];
+    float _status_resp_buf[STATUS_ARRAY_SIZE];
+    float   _leg_fb_buf[NUM_LEGS];
+    float   _upperbody_fb_buf[NUM_UPPDERBODY];
     char    _debug_char_buf[128];
 
     // ── Subscriber / timer setup helpers ──

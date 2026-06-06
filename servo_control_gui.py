@@ -24,13 +24,13 @@ from settings.settings import *
 #put the required hotkey as well
 #add positions for the subwidgets in the return_servo_subWidgets_positions function in servo_subclasses.py
 command_array(name = LEGS,
-              ids_array= [16, 6 , 7 , 8, 10 , 9, 17,  11, 12, 13, 15, 14],
+              ids_array= [16, 6 , 7 , 8, 10 , 9, 17, 18, 12, 13, 15, 14],
               hotkey_array = ['q','w','e','r','t','y','u','i','o','p','[',']'],
               pub_topic=LEGS_PUB_TOPIC,
               pub_type=LEGS_MSG_TYPE)
 
 command_array(name = UPPERBODY,
-              ids_array = [0, 1, 2, 3, 4, 18, 19, 101, 102, 103, 104],
+              ids_array = [0, 1, 2, 3, 4, 11, 19, 101, 102, 103, 104],
               hotkey_array = ['a','s','d','f','g','h','j','k','l',';',"'"],
               pub_topic=UPPERBODY_PUB_TOPIC,
               pub_type=UPPERBODY_MSG_TYPE)
@@ -57,7 +57,7 @@ class servoGUI(QWidget):
         self.ros_node = ServoControlROSNode()
         # step increment for servo changes (0-90)
         self.step = 10
-        self.safety = True #kept here to keep og logic, not integrated in gui dou, always assume safety is on
+        self.safety = False #kept here to keep og logic, not integrated in gui dou, always assume safety is on
         # torque verification polling state
         self._torque_verify_count = 0
         self._torque_response_count = 0      # responses received during this verification round
@@ -294,6 +294,8 @@ class servoGUI(QWidget):
         self.sidebar.clear_errors_requested.connect(self.ros_node.reset_error)
         self.sidebar.status_poll_tick.connect(self.ros_node.request_status)
         self.sidebar.torque_poll_tick.connect(self.ros_node.request_torque_status)
+        self.step = self.sidebar.step_spinBox.value()
+        self.action_time = self.sidebar.action_time_spinBox.value()
         self.sidebar.step_changed.connect(lambda v: setattr(self, 'step', v))
         self.sidebar.action_time_changed.connect(lambda v: setattr(self, 'action_time', v))
 
@@ -325,7 +327,15 @@ class servoGUI(QWidget):
                 continue  # std servos have no position feedback from STM
             if i >= len(angles_list):
                 break
-            self.servo_control_subWidgets_dict[id].set_angle(angles_list[i])
+            widget = self.servo_control_subWidgets_dict[id]
+            new_val = angles_list[i]
+            # Skip if value unchanged — avoids redundant Qt label redraws
+            # which caused all-but-one widgets to appear frozen at high publish rates.
+            if isinstance(new_val, float) and round(new_val) == 999:
+                continue  # checksum error — keep last known good angle, don't update
+            if widget.angle is not None and round(float(new_val), 2) == widget.angle:
+                continue
+            widget.set_angle(new_val)  # 1004 (timeout) passes through → set_angle sets angle=None → shows "--"
 
 
     def get_all_legs_angles(self):
@@ -369,10 +379,16 @@ class servoGUI(QWidget):
             self._torque_timeout_timer.start()
 
     def _torque_verify_timeout(self):
-        """Called 1 s after the 5th poll. If we didn't get all 5 responses, reset to None."""
-        if self._torque_response_count < 5:
-            print(f"Torque verification failed: only {self._torque_response_count}/5 responses received. Resetting to None.")
+        """Called 1 s after the 5th poll.
+        Only reset to None if *no* response arrived at all — if at least one
+        response confirmed the state (True/False) keep that value so a slow
+        serial bus doesn't silently undo a successful torque toggle.
+        """
+        if self._torque_response_count == 0:
+            print("Torque verification failed: no responses received. Resetting to None.")
             self.torque_lock_widget.set_torque_state(None)
+        else:
+            print(f"Torque verification: {self._torque_response_count}/5 responses received. Keeping confirmed state.")
 
     def handle_torque_feedback(self, torque_list: list):
         """Handle torque feedback (list of 20 ints 0/1) from status_response."""

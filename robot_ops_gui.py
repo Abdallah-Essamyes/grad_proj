@@ -128,6 +128,9 @@ class RobotOpsGUI(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setDesktopFileName("nubi-ops")  # Wayland: matches app_id to nubi-ops.desktop for taskbar icon
+    icon_path = Path(__file__).resolve().parent / "documents" / "ops_icon_white.png"
+    app.setWindowIcon(QIcon(str(icon_path)))
     window = RobotOpsGUI()
     window.show()
     sys.exit(app.exec())

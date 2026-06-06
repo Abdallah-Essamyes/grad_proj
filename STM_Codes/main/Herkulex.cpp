@@ -1161,7 +1161,7 @@ static void _buildPosRequest(int servoID, byte* pkt)
 
 static int _parsePosResponse(HardwareSerial& ser)
 {
-  if (ser.available() < 13) return 3588;  // timed-out sentinel → getAngle gives 1004
+  if (ser.available() < 13) return 3588;  // timed-out sentinel → angle 1004, filtered
 
   byte buf[13];
   int i = 0, begun = 0;
@@ -1174,12 +1174,12 @@ static int _parsePosResponse(HardwareSerial& ser)
   }
   if (i < 13) return 3588;
 
-  // Checksum over the 6 data bytes (dataEx[7..12])
+  // Checksum over the 6 data bytes (buf[7..12]) — identical to original checksum1() logic
   byte xr = buf[2] ^ buf[3] ^ buf[4];
   for (int j = 7; j <= 12; j++) xr ^= buf[j];
   byte ck1v = xr & 0xFE;
   byte ck2v = (~ck1v) & 0xFE;
-  if (ck1v != buf[5] || ck2v != buf[6]) return 3586;  // checksum error → 999
+  if (ck1v != buf[5] || ck2v != buf[6]) return 3586;  // checksum mismatch → 999
 
   return ((buf[10] & 0x03) << 8) | buf[9];
 }
@@ -1190,26 +1190,34 @@ void get2positions(int id1, int id2, float &angle1, float &angle2)
   _buildPosRequest(id1, pkt1);
   _buildPosRequest(id2, pkt2);
 
-  // Flush both RX buffers
-  while (Serial1.available()) Serial1.read();
-  while (Serial2.available()) Serial2.read();
+  // Use the exact serial objects each Herkulex instance was configured with in begin().
+  // Using the global Serial1/Serial2 names directly risks aliasing to the wrong UART
+  // if the board package maps them differently from the pins set in begin().
+  HardwareSerial& bus1 = Herkulex.getSerial();
+  HardwareSerial& bus2 = Herkulex2.getSerial();
 
-  // Send both requests back-to-back — they travel in parallel on separate wires
-  Serial1.write(pkt1, 9);
-  Serial2.write(pkt2, 9);
+  // Flush both RX buffers before sending to discard any stale bytes from the
+  // previous iteration. The servo cannot respond until it has received the full
+  // 9-byte request (~782 µs at 115200 baud), so these drains are safe.
+  while (bus1.available()) bus1.read();
+  while (bus2.available()) bus2.read();
 
-  // Wait until both ports have 13 bytes, or TIME_OUT ms elapses
+  // Send both requests back-to-back — they transmit in parallel on separate UARTs.
+  bus1.write(pkt1, 9);
+  bus2.write(pkt2, 9);
+
+  // Wait until both ports have 13 bytes, or 10 ms elapses.
   int tc = 0;
-  while (tc < TIME_OUT) {
-    if (Serial1.available() >= 13 && Serial2.available() >= 13) break;
+  while (tc < 20) {
+    if (bus1.available() >= 13 && bus2.available() >= 13) break;
     delayMicroseconds(500);
     tc++;
   }
   // If one port timed out but not the other, we still attempt to read both;
   // _parsePosResponse returns the appropriate sentinel for each.
 
-  int pos1 = _parsePosResponse(Serial1);
-  int pos2 = _parsePosResponse(Serial2);
+  int pos1 = _parsePosResponse(bus1);
+  int pos2 = _parsePosResponse(bus2);
 
   angle1 = (pos1 - 512) * 0.325f;
   angle2 = (pos2 - 512) * 0.325f;

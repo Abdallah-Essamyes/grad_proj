@@ -106,7 +106,10 @@ class servo_control_subWidget(QWidget):
         super().mouseReleaseEvent(event)
 
     # ── Public API ────────────────────────────────────────────────────────────
-    def set_status(self, err: int, det: int) -> None:
+    def set_status(self, err, det) -> None:
+        """Accept int or float (Float32MultiArray delivers floats)."""
+        err = int(err)
+        det = int(det)
         self.err_label.setText(f"err: {err & 0xFF:#04x}")
         self.det_label.setText(f"det: {det & 0xFF:#04x}")
 

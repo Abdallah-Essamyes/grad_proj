@@ -37,69 +37,83 @@
  *****************************************************************************  
 */
 #include "Herkulex.h"
-#include "SoftwareSerial.h"
+//#include "SoftwareSerial.h"
 
 
 // Macro for the Serial port selection
-#define HSerial1     1 		// Write in Serial 1 port Arduino Mega - Pin 19(rx) - 18 (tx) 
-#define HSerial2     2   	// Write in Serial 2 port Arduino Mega - Pin 17(rx) - 16 (tx) 
-#define HSerial3     3   	// Write in Serial 3 port Arduino Mega - Pin 15(rx) - 14 (tx)
-#define SSerial      4   	// Write in SoftSerial Arduino with 328p or Mega
+// #define HSerial1     1 		// Write in Serial 1 port Arduino Mega - Pin 19(rx) - 18 (tx) 
+// #define HSerial2     2   	// Write in Serial 2 port Arduino Mega - Pin 17(rx) - 16 (tx) 
+// #define HSerial3     3   	// Write in Serial 3 port Arduino Mega - Pin 15(rx) - 14 (tx)
+//#define SSerial      4   	// Write in SoftSerial Arduino with 328p or Mega
  
-extern SoftwareSerial SwSerial(0, 1);
+//extern SoftwareSerial SwSerial(0, 1);
 
-// Herkulex begin with Arduino Uno
+// Herkulex begin — Serial1, backward-compatible
 void HerkulexClass::begin(long baud, int rx, int tx)
 {
-	SwSerial.setRX(rx);
-	SwSerial.setTX(tx);
-	SwSerial.begin(baud);
-	port = SSerial;
-}
-
-#if defined (__AVR_ATmega1280__) || defined (__AVR_ATmega128__) || defined (__AVR_ATmega2560__)
-// Herkulex begin with Arduino Mega - Serial 1
-void HerkulexClass::beginSerial1(long baud)
-{
-	Serial1.begin(baud);
-	port = HSerial1;
-}
-
-// Herkulex begin with Arduino Mega - Serial 2
-void HerkulexClass::beginSerial2(long baud)
-{
-	Serial2.begin(baud);
-	port=HSerial2;
-}
-
-// Herkulex begin with Arduino Mega - Serial 3
-void HerkulexClass::beginSerial3(long baud)
-{
-	Serial3.begin(baud);
-	port = HSerial3;
-}
+	_serial = &Serial1;
+#if defined(STM32_CORE_VERSION) || defined(ARDUINO_ARCH_STM32)
+	Serial1.setRx((uint32_t)rx);
+	Serial1.setTx((uint32_t)tx);
 #endif
+	Serial1.begin(baud);
+}
+
+// Herkulex begin — any HardwareSerial (e.g. Serial2 for PA2/PA3)
+void HerkulexClass::begin(long baud, HardwareSerial& ser, int rx, int tx)
+{
+	_serial = &ser;
+#if defined(STM32_CORE_VERSION) || defined(ARDUINO_ARCH_STM32)
+	ser.setRx((uint32_t)rx);
+	ser.setTx((uint32_t)tx);
+#endif
+	ser.begin(baud);
+}
+
+// #if defined (__AVR_ATmega1280__) || defined (__AVR_ATmega128__) || defined (__AVR_ATmega2560__)
+// // Herkulex begin with Arduino Mega - Serial 1
+// void HerkulexClass::beginSerial1(long baud)
+// {
+// 	Serial1.begin(baud);
+// 	port = HSerial1;
+// }
+
+// // Herkulex begin with Arduino Mega - Serial 2
+// void HerkulexClass::beginSerial2(long baud)
+// {
+// 	Serial2.begin(baud);
+// 	port=HSerial2;
+// }
+
+// // Herkulex begin with Arduino Mega - Serial 3
+// void HerkulexClass::beginSerial3(long baud)
+// {
+// 	Serial3.begin(baud);
+// 	port = HSerial3;
+// }
+// #endif
 
 // Herkulex end
 void HerkulexClass::end()
 {
-	switch (port)
-	{
-	case SSerial:
-		SwSerial.end();
-		break;
-    #if defined (__AVR_ATmega1280__) || defined (__AVR_ATmega128__) || defined (__AVR_ATmega2560__)
-	case HSerial1:
-		Serial1.end();
-		break;
-	case HSerial2:
-		Serial2.end();
-		break;
-	case HSerial3:
-		Serial3.end();
-		break;
-	#endif
-	}
+	_serial->end();
+	// switch (port)
+	// {
+	// case SSerial:
+	// 	SwSerial.end();
+	// 	break;
+  //   #if defined (__AVR_ATmega1280__) || defined (__AVR_ATmega128__) || defined (__AVR_ATmega2560__)
+	// case HSerial1:
+	// 	Serial1.end();
+	// 	break;
+	// case HSerial2:
+	// 	Serial2.end();
+	// 	break;
+	// case HSerial3:
+	// 	Serial3.end();
+	// 	break;
+	// #endif
+	//}
 }
 
 // initialize servos
@@ -118,7 +132,7 @@ void HerkulexClass::initialize()
 }
 
 // stat
-byte HerkulexClass::stat(int servoID)
+byte HerkulexClass::stat(int servoID, byte &statusError, byte &statusDetail)
 {
 	{
 	pSize    = 0x07;			//3.Packet size
@@ -155,7 +169,10 @@ byte HerkulexClass::stat(int servoID)
 	if (ck1 != dataEx[5]) return -1; //checksum verify
 	if (ck2 != dataEx[6]) return -2;
 
-	return dataEx[7];			// return status
+	//return dataEx[7];			// return status
+	statusError  = dataEx[7];
+	statusDetail = dataEx[8];
+	return dataEx[7];
 }
 }
 
@@ -406,7 +423,7 @@ void HerkulexClass::moveSpeedAll(int servoID, int Goal, int iLed)
 	  int GoalSpeedSign;
 	  if (Goal < 0) {
 		GoalSpeedSign = (-1)* Goal ;
-		GoalSpeedSign |= 0x4000;  //bit n�14 
+		GoalSpeedSign |= 0x4000;  //bit n�14 
 	  } 
 	  else {
 		GoalSpeedSign = Goal;
@@ -500,6 +517,11 @@ void HerkulexClass::actionAll(int pTime)
     delay(1);
 	readData(13);
 
+	// 3588 is a sentinel: (3588-512)*0.325 = 1004.7 → int16 = 1004
+	// Signals servo did not respond at all (unpowered / disconnected).
+	// Distinct from 3586 → 999 which means bytes received but checksum failed (noise).
+	if (_timed_out) return 3588;
+
         	
 	pSize = dataEx[2];           // 3.Packet size 7-58
 	pID   = dataEx[3];           // 4. Servo ID
@@ -515,8 +537,10 @@ void HerkulexClass::actionAll(int pTime)
     ck1=checksum1(data,lenghtString);	//6. Checksum1
 	ck2=checksum2(ck1);					//7. Checksum2
 
-    if (ck1 != dataEx[5]) return -1;
-	if (ck2 != dataEx[6]) return -1;
+    // 3586 is a sentinel: (3586-512)*0.325 = 999.05 → int16 = 999
+	// so getAngle() returns 999 which signals a checksum error to callers without needing an extra if-branch.
+	if (ck1 != dataEx[5]) return 3586;
+	if (ck2 != dataEx[6]) return 3586;
 
 	Position = ((dataEx[10]&0x03)<<8) | dataEx[9];
         return Position;
@@ -525,6 +549,7 @@ void HerkulexClass::actionAll(int pTime)
 
 float HerkulexClass::getAngle(int servoID) {
 	int pos = (int)getPosition(servoID);
+	// If pos==3586 (checksum error sentinel), this yields 999.05 → 999 after int16 cast
 	return (pos-512) * 0.325;
 }
 
@@ -575,6 +600,95 @@ void HerkulexClass::setLed(int servoID, int valueLed)
 	dataEx[9] = data[2];        // Value
 
 	sendData(dataEx, pSize);
+}
+
+// getLed - read current LED color from RAM register 0x35
+byte HerkulexClass::getLed(int servoID)
+{
+  // manually flush RX before starting
+  delay(5);
+  while(_serial->available()) _serial->read();
+  delay(2);
+  
+	pSize = 0x09;
+  pID   = servoID;
+  cmd   = HRAMREAD;
+  data[0] = 0x35;
+  data[1] = 0x01;
+  lenghtString = 2;
+
+  ck1 = checksum1(data, lenghtString);
+  ck2 = checksum2(ck1);
+  
+	dataEx[0] = 0xFF;
+  dataEx[1] = 0xFF;
+  dataEx[2] = pSize;
+  dataEx[3] = pID;
+  dataEx[4] = cmd;
+  dataEx[5] = ck1;
+  dataEx[6] = ck2;
+  dataEx[7] = data[0];
+  dataEx[8] = data[1];
+  
+	_serial->write(dataEx, pSize);  // send directly, bypass clearBuffer
+  delay(5);                       // give servo time to respond
+  readData(12);
+  
+	int ck1_check = (dataEx[2]^dataEx[3]^dataEx[4]^
+                 dataEx[7]^dataEx[8]^dataEx[9]^
+                 dataEx[10]^dataEx[11]) & 0xFE;
+  int ck2_check = (~ck1_check) & 0xFE;
+  
+	if (ck1_check != dataEx[5]) return -1;
+  if (ck2_check != dataEx[6]) return -2;
+
+  return dataEx[9];
+}
+
+// getTorque - read current torque state from RAM register 0x34
+// Returns: 0x60 = Torque ON, 0x40 = Break ON, 0x00 = Torque Free
+// Returns -1 or -2 on checksum error
+byte HerkulexClass::getTorque(int servoID)
+{
+  // flush RX buffer before starting
+  while(_serial->available()) _serial->read();
+  delay(1);
+
+  pSize = 0x09;
+  pID   = servoID;
+  cmd   = HRAMREAD;
+  data[0] = 0x34;               // Address 52 = Torque Control register
+  data[1] = 0x01;               // Length: 1 byte
+  lenghtString = 2;
+
+  ck1 = checksum1(data, lenghtString);
+  ck2 = checksum2(ck1);
+
+  dataEx[0] = 0xFF;
+  dataEx[1] = 0xFF;
+  dataEx[2] = pSize;
+  dataEx[3] = pID;
+  dataEx[4] = cmd;
+  dataEx[5] = ck1;
+  dataEx[6] = ck2;
+  dataEx[7] = data[0];
+  dataEx[8] = data[1];
+
+  _serial->write(dataEx, pSize);  // send directly, bypass clearBuffer
+  delay(2);                        // give servo time to respond
+  readData(12);
+
+  // Verify checksum on ACK packet
+  // ACK packet: [0xFF][0xFF][size][pID][cmd][ck1][ck2][addr][len][value][statusErr][statusDetail]
+  int ck1_check = (dataEx[2]^dataEx[3]^dataEx[4]^
+                   dataEx[7]^dataEx[8]^dataEx[9]^
+                   dataEx[10]^dataEx[11]) & 0xFE;
+  int ck2_check = (~ck1_check) & 0xFE;
+
+  if (ck1_check != dataEx[5]) return -1;   // checksum1 mismatch
+  if (ck2_check != dataEx[6]) return -2;   // checksum2 mismatch
+
+  return dataEx[9];   // Torque Control value: 0x60=ON, 0x40=Break, 0x00=Free
 }
 
 // get the speed for one servo - values betweeb -1023 <--> 1023
@@ -641,7 +755,7 @@ void HerkulexClass::moveSpeedOne(int servoID, int Goal, int pTime, int iLed)
   int GoalSpeedSign;
   if (Goal < 0) {
     GoalSpeedSign = (-1)* Goal ;
-    GoalSpeedSign |= 0x4000;  //bit n�14 
+    GoalSpeedSign |= 0x4000;  //bit n�14 
   } 
   else {
     GoalSpeedSign = Goal;
@@ -872,27 +986,29 @@ void HerkulexClass::addData(int GoalLSB, int GoalMSB, int set, int servoID)
 void HerkulexClass::sendData(byte* buffer, int lenght)
 {
 		clearBuffer(); 		//clear the serialport buffer - try to do it!
-        switch (port)
-		{
-			case SSerial:
-						SwSerial.write(buffer, lenght);
-						delay(1);
-						break;
-			#if defined (__AVR_ATmega1280__) || defined (__AVR_ATmega128__) || defined (__AVR_ATmega2560__)
-			case HSerial1:
-				Serial1.write(buffer, lenght);
-				delay(1);
-				break;
-			case HSerial2:
-				Serial2.write(buffer, lenght);
-				delay(1);
-				break;
-			case HSerial3:
-				Serial3.write(buffer, lenght);
-				delay(1);
-				break;
-			#endif
-		}
+		_serial->write(buffer, lenght);
+		delay(1);
+    //     switch (port)
+		// {
+		// 	case SSerial:
+		// 				SwSerial.write(buffer, lenght);
+		// 				delay(1);
+		// 				break;
+		// 	#if defined (__AVR_ATmega1280__) || defined (__AVR_ATmega128__) || defined (__AVR_ATmega2560__)
+		// 	case HSerial1:
+		// 		Serial1.write(buffer, lenght);
+		// 		delay(1);
+		// 		break;
+		// 	case HSerial2:
+		// 		Serial2.write(buffer, lenght);
+		// 		delay(1);
+		// 		break;
+		// 	case HSerial3:
+		// 		Serial3.write(buffer, lenght);
+		// 		delay(1);
+		// 		break;
+		// 	#endif
+		//}
 }
 
 // * Receiving the lenght of bytes from Serial port
@@ -901,39 +1017,23 @@ void HerkulexClass::readData(int size)
 	int i = 0;
     int beginsave=0;
     int Time_Counter=0;
-    switch (port)
-	{
-	case SSerial:
 
-        while((SwSerial.available() < size) & (Time_Counter < TIME_OUT)){
-        		Time_Counter++;
-        		delayMicroseconds(1000);  //wait 1 millisecond for 10 times
-		}
-        	
-		while (SwSerial.available() > 0){
-			byte inchar = (byte)SwSerial.read();
-			if ( (inchar == 0xFF) & ((byte)SwSerial.peek() == 0xFF) ){
-					beginsave=1; 
-					i=0; 				 // if found new header, begin again
-			}
-			if (beginsave==1 && i<size) {
-				   dataEx[i] = inchar;
-				   i++;
-			}
-		}
-		SwSerial.flush();
-		break;
-	
-	#if defined (__AVR_ATmega1280__) || defined (__AVR_ATmega128__) || defined (__AVR_ATmega2560__)
-	case HSerial1:
-		while((Serial1.available() < size) & (Time_Counter < TIME_OUT)){
+		_timed_out = false;  // assume success until proven otherwise
+
+		while((_serial->available() < size) & (Time_Counter < TIME_OUT)){
         		Time_Counter++;
         		delayMicroseconds(1000);
-		}      	
-		while (Serial1.available() > 0){
-      		byte inchar = (byte)Serial1.read();
+		}
+
+		if (Time_Counter >= TIME_OUT) {
+			_timed_out = true;   // servo never responded — unpowered or disconnected
+			return;
+		}
+
+		while (_serial->available() > 0){
+      		byte inchar = (byte)_serial->read();
 			//printHexByte(inchar);
-        	if ( (inchar == 0xFF) & ((byte)Serial1.peek() == 0xFF) ){
+        	if ( (inchar == 0xFF) & ((byte)_serial->peek() == 0xFF) ){
 						beginsave=1;
 						i=0; 						
              }
@@ -942,84 +1042,76 @@ void HerkulexClass::readData(int size)
                        i++;
 			}
 		}
-		break;
+	//	break;
 	
-	case HSerial2:
-	    while((Serial2.available() < size) & (Time_Counter < TIME_OUT)){
-        		Time_Counter++;
-        		delayMicroseconds(1000);
-		}
+	// case HSerial2:
+	//     while((Serial2.available() < size) & (Time_Counter < TIME_OUT)){
+  //       		Time_Counter++;
+  //       		delayMicroseconds(1000);
+	// 	}
         	
-		while (Serial2.available() > 0){
-			byte inchar = (byte)Serial2.read();
-			if ( (inchar == 0xFF) & ((byte)Serial2.peek() == 0xFF) ){
-					beginsave=1;
-					i=0; 					
-			}
-			if (beginsave==1 && i<size) {
-				   dataEx[i] = inchar;
-				   i++;
-			}
-		}
-		break;
+	// 	while (Serial2.available() > 0){
+	// 		byte inchar = (byte)Serial2.read();
+	// 		if ( (inchar == 0xFF) & ((byte)Serial2.peek() == 0xFF) ){
+	// 				beginsave=1;
+	// 				i=0; 					
+	// 		}
+	// 		if (beginsave==1 && i<size) {
+	// 			   dataEx[i] = inchar;
+	// 			   i++;
+	// 		}
+	// 	}
+	// 	break;
 
-	case HSerial3:
-		while((Serial3.available() < size) & (Time_Counter < TIME_OUT)){
-			Time_Counter++;
-			delayMicroseconds(1000);
-		}
+	// case HSerial3:
+	// 	while((Serial3.available() < size) & (Time_Counter < TIME_OUT)){
+	// 		Time_Counter++;
+	// 		delayMicroseconds(1000);
+	// 	}
 		
-		while (Serial3.available() > 0){
-			byte inchar = (byte)Serial3.read();
-			if ( (inchar == 0xFF) & ((byte)Serial3.peek() == 0xFF) ){
-					beginsave=1;
-					i=0; 
-			}
-			if (beginsave==1 && i<size) {
-				   dataEx[i] = inchar;
-				   i++;
-			}
-		}
-		break;
-	#endif
-	}
+	// 	while (Serial3.available() > 0){
+	// 		byte inchar = (byte)Serial3.read();
+	// 		if ( (inchar == 0xFF) & ((byte)Serial3.peek() == 0xFF) ){
+	// 				beginsave=1;
+	// 				i=0; 
+	// 		}
+	// 		if (beginsave==1 && i<size) {
+	// 			   dataEx[i] = inchar;
+	// 			   i++;
+	// 		}
+	// 	}
+	// 	break;
+	// #endif
+	//}
 }
 
 //clear buffer in the serial port - better - try to do this
 void HerkulexClass::clearBuffer()
 {
-  switch (port)
-	{
-	case SSerial:
-                SwSerial.flush();
-                delay(1);
-                break;
-	#if defined (__AVR_ATmega1280__) || defined (__AVR_ATmega128__) || defined (__AVR_ATmega2560__)
-	case HSerial1:
-				Serial1.flush();
-				while (Serial1.available()){
-				Serial1.read();
-				delayMicroseconds(200);
-				}
+			_serial->flush();
+			while (_serial->available()){
+			_serial->read();
+			delayMicroseconds(200);
+			}
 
-		break;
-	case HSerial2:
-	            Serial2.flush();
-				while (Serial2.available()){
-				Serial2.read();
-				delayMicroseconds(200);
-				}
-		break;
-	case HSerial3:
-	            Serial3.flush();
-				while (Serial3.available()){
-					Serial3.read();
-					delayMicroseconds(200);
-				}
+	// 	break;
+	// case HSerial2:
+	//             Serial2.flush();
+	// 			while (Serial2.available()){
+	// 			Serial2.read();
+	// 			delayMicroseconds(200);
+	// 			}
+	// 	break;
+	// case HSerial3:
+	//             Serial3.flush();
+	// 			while (Serial3.available()){
+	// 				Serial3.read();
+	// 				delayMicroseconds(200);
+	// 			}
 
-		break;
-	#endif
-	}
+	// 	break;
+	// #endif
+	//}
 }
 
 void HerkulexClass::printHexByte(byte x)
@@ -1035,4 +1127,98 @@ void HerkulexClass::printHexByte(byte x)
 
 
 
- HerkulexClass Herkulex;
+HerkulexClass Herkulex;   // Bus 1 — Serial1 (TX=PA9, RX=PA10)
+HerkulexClass Herkulex2;  // Bus 2 — Serial2 (TX=PA2, RX=PA3)
+
+// ---------------------------------------------------------------------------
+// get2positions(id1, id2, angle1, angle2)
+//
+// Fires a HRAMREAD position request on both serial buses simultaneously,
+// waits once for both responses (instead of two sequential blocking reads),
+// then parses each response.  Calling this once per loop iteration yields
+// two position readings for roughly the cost of one.
+//
+// id1 must be a servo on Bus 1 (h1 array), id2 on Bus 2 (h2 array).
+// angle1/angle2 receive the result:
+//   < 900.0  → valid angle in degrees
+//   ≥ 1002.0 → timeout sentinel (1004.0) — servo unpowered/disconnected
+//   ≈ 999.0  → checksum error (noise)
+// ---------------------------------------------------------------------------
+static void _buildPosRequest(int servoID, byte* pkt)
+{
+  byte pSz = 0x09;
+  byte pId = (byte)servoID;
+  byte cm  = 0x04;   // HRAMREAD
+  byte d0  = 0x3A;   // Position register address
+  byte d1  = 0x02;   // Length: 2 bytes
+  byte c1  = (byte)((pSz ^ pId ^ cm ^ d0 ^ d1) & 0xFE);
+  byte c2  = (byte)((~c1) & 0xFE);
+  pkt[0] = 0xFF; pkt[1] = 0xFF;
+  pkt[2] = pSz;  pkt[3] = pId;  pkt[4] = cm;
+  pkt[5] = c1;   pkt[6] = c2;
+  pkt[7] = d0;   pkt[8] = d1;
+}
+
+static int _parsePosResponse(HardwareSerial& ser)
+{
+  if (ser.available() < 13) return 3588;  // timed-out sentinel → angle 1004, filtered
+
+  byte buf[13];
+  int i = 0, begun = 0;
+  while (ser.available() > 0 && i < 13) {
+    byte c = (byte)ser.read();
+    if (!begun && c == 0xFF && (byte)ser.peek() == 0xFF) {
+      begun = 1; i = 0;
+    }
+    if (begun && i < 13) buf[i++] = c;
+  }
+  if (i < 13) return 3588;
+
+  // Checksum over the 6 data bytes (buf[7..12]) — identical to original checksum1() logic
+  byte xr = buf[2] ^ buf[3] ^ buf[4];
+  for (int j = 7; j <= 12; j++) xr ^= buf[j];
+  byte ck1v = xr & 0xFE;
+  byte ck2v = (~ck1v) & 0xFE;
+  if (ck1v != buf[5] || ck2v != buf[6]) return 3586;  // checksum mismatch → 999
+
+  return ((buf[10] & 0x03) << 8) | buf[9];
+}
+
+void get2positions(int id1, int id2, float &angle1, float &angle2)
+{
+  byte pkt1[9], pkt2[9];
+  _buildPosRequest(id1, pkt1);
+  _buildPosRequest(id2, pkt2);
+
+  // Use the exact serial objects each Herkulex instance was configured with in begin().
+  // Using the global Serial1/Serial2 names directly risks aliasing to the wrong UART
+  // if the board package maps them differently from the pins set in begin().
+  HardwareSerial& bus1 = Herkulex.getSerial();
+  HardwareSerial& bus2 = Herkulex2.getSerial();
+
+  // Flush both RX buffers before sending to discard any stale bytes from the
+  // previous iteration. The servo cannot respond until it has received the full
+  // 9-byte request (~782 µs at 115200 baud), so these drains are safe.
+  while (bus1.available()) bus1.read();
+  while (bus2.available()) bus2.read();
+
+  // Send both requests back-to-back — they transmit in parallel on separate UARTs.
+  bus1.write(pkt1, 9);
+  bus2.write(pkt2, 9);
+
+  // Wait until both ports have 13 bytes, or 10 ms elapses.
+  int tc = 0;
+  while (tc < 20) {
+    if (bus1.available() >= 13 && bus2.available() >= 13) break;
+    delayMicroseconds(500);
+    tc++;
+  }
+  // If one port timed out but not the other, we still attempt to read both;
+  // _parsePosResponse returns the appropriate sentinel for each.
+
+  int pos1 = _parsePosResponse(bus1);
+  int pos2 = _parsePosResponse(bus2);
+
+  angle1 = (pos1 - 512) * 0.325f;
+  angle2 = (pos2 - 512) * 0.325f;
+}	

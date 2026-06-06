@@ -1,6 +1,7 @@
 from PyQt6.QtCore import pyqtSignal, QObject
 from rclpy.node import Node
 from std_msgs.msg import Int16MultiArray, Float32MultiArray
+
 from rclpy.publisher import Publisher
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from settings.settings import *
@@ -53,25 +54,25 @@ class ServoControlROSNode(Node, QObject):
             print(f"Failed to publish to {topic_name}: {e}")
     
     def publish_collision_verification(self, angles: list):
-        msg = Float32MultiArray()
+        msg = COLLISION_VALIDATION_MSG_TYPE()
         msg.data = [float(a) for a in angles]
         self.collision_verification_pub.publish(msg)
 
     def publish_legs_angles(self, num: list):
-        msg = Float32MultiArray()
+        msg = LEGS_MSG_TYPE()
         msg.data = [float(a) for a in num]
         self.legs_pub.publish(msg)
 
     def publish_upperbody_angles(self, num: list):
-        msg = Float32MultiArray()
+        msg = UPPERBODY_MSG_TYPE()
         msg.data = [float(a) for a in num]
         self.upperbody_pub.publish(msg)
 
     def _send_status_command(self, data: list[int]):
         """Send a status_command array. data[0] is the index byte. Padded to STATUS_ARRAY_SIZE."""
         padded = (data + [0] * STATUS_ARRAY_SIZE)[:STATUS_ARRAY_SIZE]
-        msg = Int16MultiArray()
-        msg.data = padded
+        msg = STATUS_MSG_TYPE()
+        msg.data = [float(v) for v in padded]
         self.status_pub.publish(msg)
 
     def request_status(self):
@@ -99,13 +100,13 @@ class ServoControlROSNode(Node, QObject):
         self._send_status_command([CMD_MOVE_ONE, servo_id, angle, play_time])
 
     # Subscribers
-    def legs_callback(self, msg: Int16MultiArray):
+    def legs_callback(self, msg: Float32MultiArray):
         self.angles_callback_signal.emit(LEGS, list(msg.data))
 
-    def upperbody_callback(self, msg: Int16MultiArray):
+    def upperbody_callback(self, msg: Float32MultiArray):
         self.angles_callback_signal.emit(UPPERBODY, list(msg.data))
 
-    def status_response_callback(self, msg: Int16MultiArray):
+    def status_response_callback(self, msg: Float32MultiArray):
         if not msg.data:
             return
         resp_index = msg.data[0]

@@ -50,7 +50,7 @@
 
 #define DATA_SIZE	 30		// buffer for input data
 #define DATA_MOVE  	 50		// max 10 servos <---- change this for more servos!
-#define TIME_OUT     5   	//timeout serial communication
+#define TIME_OUT     10   	//timeout serial communication
 
 // SERVO HERKULEX COMMAND - See Manual p40
 #define HEEPWRITE    0x01 	//Rom write
@@ -127,6 +127,8 @@ public:
  
   void  writeRegistryRAM(int servoID, int address, int writeByte);
   void  writeRegistryEEP(int servoID, int address, int writeByte);
+
+  HardwareSerial& getSerial() { return *_serial; }  // expose the configured UART for get2positions
   
 // private area  
 private:

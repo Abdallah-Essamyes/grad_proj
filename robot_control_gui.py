@@ -46,6 +46,7 @@ if __name__ == "__main__":
     rclpy.init()
     os.environ["QT_SCALE_FACTOR"] = "0.9"
     app = QApplication(sys.argv)
+    app.setDesktopFileName("nubi-control")  # Wayland: matches app_id to nubi-control.desktop for taskbar icon
     robot_control_gui= robotGUI()
     robot_control_gui.showNormal()
 

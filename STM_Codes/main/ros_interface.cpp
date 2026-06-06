@@ -1,3 +1,4 @@
+#include "constants.h"
 #include "ros_interface.h"
 #include "Herkulex.h"
 
@@ -46,16 +47,16 @@ void RosInterface::setup() {
     }
 
     // ── Feedback buffer initialisation (1004.0 = "no power" sentinel) ──
-    for (int i = 0; i < 12; i++) _leg_fb_buf[i]       = 1004.0f;
-    for (int i = 0; i < 7;  i++) _upperbody_fb_buf[i] = 1004.0f;
+    for (int i = 0; i < NUM_LEGS; i++) _leg_fb_buf[i]       = 1004.0f;
+    for (int i = 0; i < NUM_UPPDERBODY;  i++) _upperbody_fb_buf[i] = 1004.0f;
 
-    legs_feedback.data.capacity = 12;
+    legs_feedback.data.capacity = NUM_LEGS;
     legs_feedback.data.data     = _leg_fb_buf;
-    legs_feedback.data.size     = 12;
+    legs_feedback.data.size     = NUM_LEGS;
 
-    upperbody_feedback.data.capacity = 7;
+    upperbody_feedback.data.capacity = NUM_UPPDERBODY;
     upperbody_feedback.data.data     = _upperbody_fb_buf;
-    upperbody_feedback.data.size     = 7;
+    upperbody_feedback.data.size     = NUM_UPPDERBODY;
 
     // ── Status response buffer ──
     memset(_status_resp_buf, 0, sizeof(_status_resp_buf));
@@ -76,7 +77,7 @@ void RosInterface::setup() {
 
     rclc_publisher_init_best_effort(
         &_status_pub, &_node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int16MultiArray),
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
         "status_response");
 
     rclc_publisher_init_default(
@@ -128,7 +129,7 @@ void RosInterface::_setup_leg_sub() {
     RCCHECK(rclc_subscription_init_default(
         &_leg_sub, &_node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
-        "legs_command"));
+        "legs_command"));  // RELIABLE matches PC publisher
 
     RCCHECK(rclc_executor_add_subscription(
         &_executor, &_leg_sub, &_legs_cmd, _legs_cb, ON_NEW_DATA));
@@ -140,10 +141,10 @@ void RosInterface::_setup_upperbody_sub() {
     _upperbody_cmd.data.data     = _upperbody_cmd_buf;
     _upperbody_cmd.data.size     = 0;
 
-    RCCHECK(rclc_subscription_init_best_effort(
+    RCCHECK(rclc_subscription_init_default(
         &_upperbody_sub, &_node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
-        "upperbody_command"));
+        "upperbody_command"));  // RELIABLE matches PC publisher
 
     RCCHECK(rclc_executor_add_subscription(
         &_executor, &_upperbody_sub, &_upperbody_cmd, _upperbody_cb, ON_NEW_DATA));
@@ -154,10 +155,10 @@ void RosInterface::_setup_status_sub() {
     _status_cmd.data.data     = _status_cmd_buf;
     _status_cmd.data.size     = 0;
 
-    RCCHECK(rclc_subscription_init_best_effort(
+    RCCHECK(rclc_subscription_init_default(
         &_status_sub, &_node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int16MultiArray),
-        "status_command"));
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
+        "status_command"));  // RELIABLE matches PC publisher
 
     RCCHECK(rclc_executor_add_subscription(
         &_executor, &_status_sub, &_status_cmd, _status_cb, ON_NEW_DATA));
@@ -168,13 +169,13 @@ void RosInterface::_setup_status_sub() {
 // ===========================================================================
 
 void RosInterface::_on_legs_cmd(const void* /*msgin*/) {
-    // h1 motors occupy indices 0..NUM_H1-1 in the command array
-    for (int i = 0; i < NUM_H1; i++) {
-        Herkulex.moveAllAngle(h1[i], _legs_cmd.data.data[i], LED_BLUE);
-    }
-    // remaining leg motors (indices NUM_H1..NUM_LEGS-1) are on Bus 2
-    for (int i = NUM_H1; i < NUM_LEGS; i++) {
-        Herkulex2.moveAllAngle(leg_motor_indecies[i], _legs_cmd.data.data[i], LED_BLUE);
+    // Route each command to the correct bus using leg_motor_indecies (command-order
+    // servo IDs) and busForId (returns Herkulex or Herkulex2 based on wiring).
+    // This replaces the old h1[i] approach which used wiring-group indices instead
+    // of command-order indices, sending wrong angles to wrong servos.
+    for (int i = 0; i < NUM_LEGS; i++) {
+        int sid = (int)leg_motor_indecies[i];
+        busForId(sid).moveAllAngle(sid, _legs_cmd.data.data[i], LED_BLUE);
     }
     int ptime = (int)_legs_cmd.data.data[NUM_LEGS];  // last element is playtime
     Herkulex.actionAll(ptime);
@@ -182,20 +183,23 @@ void RosInterface::_on_legs_cmd(const void* /*msgin*/) {
 }
 
 void RosInterface::_on_upperbody_cmd(const void* /*msgin*/) {
-    // All Herkulex upper-body motors are on Bus 2 (h2[0..NUM_UPPDERBODY-1])
+    // Route each command via busForId — upper-body servos span both buses
+    // (e.g. servos 0,1,2,19 are on Bus 1; 3,4,18 are on Bus 2).
     for (int i = 0; i < NUM_UPPDERBODY; i++) {
-        Herkulex2.moveAllAngle(h2[i], _upperbody_cmd.data.data[i], LED_BLUE);
+        int sid = (int)upper_motor_indecies[i];
+        busForId(sid).moveAllAngle(sid, _upperbody_cmd.data.data[i], LED_BLUE);
     }
     for (int j = 0; j < NUM_STD_SERVOS; j++) {
         int servo_pos = constrain((int)_upperbody_cmd.data.data[NUM_UPPDERBODY + j], 0, 180);
         std_servo[j].write(servo_pos);
     }
     int ptime = (int)_upperbody_cmd.data.data[NUM_UPPDERBODY + NUM_STD_SERVOS];
+    Herkulex.actionAll(ptime);
     Herkulex2.actionAll(ptime);
 }
 
 void RosInterface::_on_status_cmd(const void* /*msgin*/) {
-    int16_t idx = _status_cmd.data.data[0];
+    int16_t idx = (int16_t)_status_cmd.data.data[0];
 
     char log_buf[128];
     const char* action_str = "unknown";

@@ -19,7 +19,10 @@
 #define NUM_STD_SERVOS 4
 #define NUM_LEGS 12
 #define NUM_UPPDERBODY 7
-const uint leg_motor_indecies[NUM_LEGS] = {16,6,7,8,10,9,17,18,12,13,15,14};
+// Order MUST match Python's ids_array in servo_control_gui.py:
+//   legs:      [16, 6, 7, 8, 10, 9, 17, 18, 12, 13, 15, 14]
+//   upperbody: [ 0, 1, 2, 3,  4, 11, 19]
+const uint leg_motor_indecies[NUM_LEGS]       = {16,6,7,8,10,9,17,18,12,13,15,14};
 const uint upper_motor_indecies[NUM_UPPDERBODY] = {0,1,2,3,4,11,19};
 const uint BAUD_RATE = 666666;  // official Herkulex baud rate for 0x07 EEP register value (p.25 of manual)
 // ---------------------------------------------------------------------------
@@ -29,8 +32,8 @@ const uint BAUD_RATE = 666666;  // official Herkulex baud rate for 0x07 EEP regi
 // These are purely wiring groups — independent of leg/upper-body grouping.
 // Edit counts and IDs to match your physical wiring.
 // ---------------------------------------------------------------------------
-const int h1[] = {16,6,7,8,10,9,17,18,12};
-const int h2[] = {0,1,2,3,4,11,19,13,15,14};
+const int h1[] = {0,1,2,6,7,8,9,10,16,19};
+const int h2[] = {3,4,11,12,13,14,15,18,17};
 #define NUM_H1 (int)(sizeof(h1)/sizeof(h1[0]))
 #define NUM_H2 (int)(sizeof(h2)/sizeof(h2[0]))
 // number of motors
